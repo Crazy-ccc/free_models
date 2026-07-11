@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1
+#
+# 预构建 Rust 构建基础镜像（独立层，可被多个项目 Dockerfile 复用）
+#
+# 目的：把「与项目源码无关、但每次构建都要重复执行」的固定步骤
+#   （安装系统构建库 + 更新/固定 Rust 工具链）提前一次性做进一个镜像，
+#   之后各项目 Dockerfile 只需 `FROM rust-builder:alpine`，即可跳过这些耗时步骤。
+#
+# 本地构建命令（只需在 rust 工具链或依赖变更时重建）：
+#   docker build -f docker/Dockerfile.rust-builder -t rust-builder:alpine .
+# 如需绑定 rust 版本，可加标签如：rust-builder:1.84-alpine
+#
+# 覆盖范围（超集，对两类项目都安全）：
+#   - 纯 rustls 项目（如 free_models、InterviewGuide）：openssl 库存在亦无害
+#   - native-tls 项目（如 ip_pool）：已有 openssl-dev / openssl-libs-static，
+#     配合项目构建时的 OPENSSL_STATIC=1 即可静态链接 OpenSSL
+
+FROM rust:alpine
+
+# 构建期系统库（超集）：
+#   ca-certificates  - 拉取 crate / HTTPS 所需根证书
+#   musl-dev         - musl 静态链接工具链（alpine 默认 libc）
+#   openssl-dev / openssl-libs-static / pkgconfig - native-tls 项目静态链接 OpenSSL 所需
+#   curl             - 构建/下载辅助（按需保留）
+RUN apk add --no-cache \
+    ca-certificates \
+    musl-dev \
+    openssl-dev \
+    openssl-libs-static \
+    pkgconfig \
+    curl
+
+# 固定稳定版 Rust 工具链，避免每次构建都去更新
+RUN rustup update stable && rustup default stable
+
+WORKDIR /app
+
+# 清理无用的 cargo 下载缓存，减小镜像体积（源码缓存由项目层另行挂载，不影响）
+RUN rm -rf /usr/local/cargo/registry/cache/* /usr/local/cargo/registry/src/*

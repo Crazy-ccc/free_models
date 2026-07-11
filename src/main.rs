@@ -9,7 +9,6 @@ use actix_web::{web, App, HttpServer, middleware as actix_middleware};
 use log::info;
 use reqwest::Client;
 use sea_orm::DatabaseConnection;
-use std::time::Duration;
 
 use crate::middleware::auth::AuthMiddleware;
 use crate::service::api_key_cache::ApiKeyCache;

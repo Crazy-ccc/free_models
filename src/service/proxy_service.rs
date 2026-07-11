@@ -19,6 +19,12 @@ enum ForwardOutcome {
     Retry,
 }
 
+/// 上游 SSE 流中段出错时，下发一个干净的结束帧，让客户端以正常方式收尾，
+/// 而不是因为传输层报错导致下游出现 “SSE stream error”。
+fn sse_close_event() -> web::Bytes {
+    web::Bytes::from_static(b"data: [DONE]\n\n")
+}
+
 /// 向单个 provider 发送 /chat/completions 请求并做初步状态码判断。
 ///
 /// 公共的“构建 URL + 设置 header + 发送请求 + 4xx/5xx/网络错误分流”逻辑都收敛于此，
@@ -44,6 +50,7 @@ async fn forward_to_provider(
         .post(&url)
         .header("Authorization", format!("Bearer {}", model_info.api_key))
         .header("Content-Type", "application/json")
+        .header("Accept-Encoding", "identity")
         .json(&request_body)
         .timeout(Duration::from_secs(model_info.timeout))
         .send()
@@ -143,10 +150,12 @@ pub async fn proxy_chat_completion_stream(
             ForwardOutcome::Success(resp) => {
                 let byte_stream = resp.bytes_stream();
 
-                // 将 reqwest 的流转换为 actix 的流式响应
-                let stream = byte_stream.map(|item| {
-                    item.map(|bytes| actix_web::web::Bytes::from(bytes.to_vec()))
-                        .map_err(|e| actix_web::error::ErrorInternalServerError(e))
+                // 将 reqwest 的流转换为 actix 的流式响应。
+                // 上游中段出错时不抛 server error（响应头已发出会直接断连导致客户端 SSE stream error），
+                // 而是下发一个干净的 [DONE] 结束帧，让客户端正常收尾。
+                let stream = byte_stream.map(|item| match item {
+                    Ok(bytes) => Ok::<_, actix_web::Error>(web::Bytes::from(bytes.to_vec())),
+                    Err(_) => Ok::<_, actix_web::Error>(sse_close_event()),
                 });
 
                 return Ok(HttpResponse::Ok()
@@ -162,4 +171,14 @@ pub async fn proxy_chat_completion_stream(
     }
 
     Err(all_models_unavailable(models))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sse_close_event_is_done_frame() {
+        assert_eq!(sse_close_event().as_ref(), b"data: [DONE]\n\n");
+    }
 }
