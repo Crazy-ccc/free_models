@@ -22,7 +22,6 @@ pub struct AppState {
     pub model_cache: ModelCache,
     pub provider_cache: ProviderCache,
     pub client: Client,
-    pub provider_timeout: Duration,
     pub priority_penalty: web::Data<PriorityPenalty>,
 }
 
@@ -50,7 +49,6 @@ async fn main() -> std::io::Result<()> {
         model_cache: ModelCache::new(),
         provider_cache: ProviderCache::new(),
         client,
-        provider_timeout: Duration::from_secs(config.provider_timeout),
         priority_penalty: priority_penalty.clone(),
     });
     let db_data = web::Data::new(db.clone());

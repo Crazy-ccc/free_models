@@ -5,7 +5,6 @@ pub struct Config {
     pub server_host: String,
     pub server_port: u16,
     pub db_max_connections: u32,
-    pub provider_timeout: u64,
 }
 
 impl Config {
@@ -17,10 +16,6 @@ impl Config {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(100),
-            provider_timeout: env::var("PROVIDER_TIMEOUT")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(60),
             server_host: env::var("SERVER_HOST")
                 .unwrap_or_else(|_| "0.0.0.0".to_string()),
             server_port: env::var("SERVER_PORT")

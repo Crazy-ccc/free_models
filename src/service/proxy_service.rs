@@ -28,7 +28,6 @@ async fn forward_to_provider(
     model_info: &ModelProviderInfo,
     body: &Value,
     is_stream: bool,
-    timeout: Duration,
 ) -> ForwardOutcome {
     let url = format!(
         "{}/chat/completions",
@@ -46,7 +45,7 @@ async fn forward_to_provider(
         .header("Authorization", format!("Bearer {}", model_info.api_key))
         .header("Content-Type", "application/json")
         .json(&request_body)
-        .timeout(timeout)
+        .timeout(Duration::from_secs(model_info.timeout))
         .send()
         .await;
 
@@ -102,7 +101,7 @@ pub async fn proxy_chat_completion(
             model_info.model_name, model_info.provider_name, model_info.priority
         );
 
-        match forward_to_provider(client, model_info, body, false, Duration::from_secs(model_info.timeout)).await {
+        match forward_to_provider(client, model_info, body, false).await {
             ForwardOutcome::Success(resp) => {
                 let status = StatusCode::from_u16(resp.status().as_u16())
                     .unwrap_or(StatusCode::OK);
@@ -140,7 +139,7 @@ pub async fn proxy_chat_completion_stream(
             model_info.model_name, model_info.provider_name, model_info.priority
         );
 
-        match forward_to_provider(client, model_info, body, true, Duration::from_secs(model_info.timeout)).await {
+        match forward_to_provider(client, model_info, body, true).await {
             ForwardOutcome::Success(resp) => {
                 let byte_stream = resp.bytes_stream();
 
