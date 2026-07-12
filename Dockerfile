@@ -1,11 +1,12 @@
 # syntax=docker/dockerfile:1
-#
-# 构建前请先一次性构建预构建基础镜像（含系统库 + Rust 工具链，显著加速）：
-#   docker build -f docker/Dockerfile.rust-builder -t rust-builder:alpine .
-# 之后本项目直接 FROM 该镜像，跳过 apk/rustup 安装步骤。
-# 只有 Rust 工具链或依赖变更时才需重建 rust-builder 基础镜像。
+FROM rust:alpine AS builder
 
-FROM rust-builder:alpine AS builder
+RUN apk add --no-cache \
+    ca-certificates \
+    musl-dev \
+    curl
+
+RUN rustup update stable && rustup default stable
 
 WORKDIR /app
 
