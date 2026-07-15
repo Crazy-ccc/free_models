@@ -22,24 +22,6 @@ pub fn unauthorized() -> HttpResponse {
     )
 }
 
-#[allow(dead_code)]
-pub fn bad_request(message: &str) -> HttpResponse {
-    openai_error(
-        actix_web::http::StatusCode::BAD_REQUEST,
-        message,
-        "invalid_request_error",
-    )
-}
-
-#[allow(dead_code)]
-pub fn not_found(message: &str) -> HttpResponse {
-    openai_error(
-        actix_web::http::StatusCode::NOT_FOUND,
-        message,
-        "invalid_request_error",
-    )
-}
-
 pub fn internal_error(message: &str) -> HttpResponse {
     openai_error(
         actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -53,5 +35,53 @@ pub fn service_unavailable(message: &str) -> HttpResponse {
         actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
         message,
         "server_error",
+    )
+}
+
+// ========== Anthropic 格式错误响应 ==========
+
+pub fn anthropic_error(
+    status: actix_web::http::StatusCode,
+    error_type: &str,
+    message: &str,
+) -> HttpResponse {
+    HttpResponse::build(status).json(json!({
+        "type": "error",
+        "error": {
+            "type": error_type,
+            "message": message
+        }
+    }))
+}
+
+pub fn anthropic_unauthorized() -> HttpResponse {
+    anthropic_error(
+        actix_web::http::StatusCode::UNAUTHORIZED,
+        "authentication_error",
+        "Invalid API key",
+    )
+}
+
+pub fn anthropic_bad_request(message: &str) -> HttpResponse {
+    anthropic_error(
+        actix_web::http::StatusCode::BAD_REQUEST,
+        "invalid_request_error",
+        message,
+    )
+}
+
+pub fn anthropic_internal_error(message: &str) -> HttpResponse {
+    anthropic_error(
+        actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+        "api_error",
+        message,
+    )
+}
+
+pub fn anthropic_service_unavailable(message: &str) -> HttpResponse {
+    anthropic_error(
+        actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+        "api_error",
+        message,
     )
 }

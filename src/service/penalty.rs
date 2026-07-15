@@ -2,19 +2,21 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const DEFAULT_PRIORITY_PENALTY_TTL: Duration = Duration::from_secs(1800);
-
 pub struct PriorityPenalty {
     penalties: Mutex<HashMap<String, Instant>>,
     ttl: Duration,
 }
 
 impl PriorityPenalty {
-    pub fn new() -> Self {
+    pub fn new(ttl: Duration) -> Self {
         PriorityPenalty {
             penalties: Mutex::new(HashMap::new()),
-            ttl: DEFAULT_PRIORITY_PENALTY_TTL,
+            ttl,
         }
+    }
+
+    pub fn ttl_secs(&self) -> u64 {
+        self.ttl.as_secs()
     }
 
     fn key(model_name: &str, provider_name: &str) -> String {

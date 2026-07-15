@@ -1,1 +1,0 @@
-ALTER TABLE model_config ADD COLUMN timeout INT NOT NULL DEFAULT 30;

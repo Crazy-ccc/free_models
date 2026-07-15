@@ -46,6 +46,15 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
+        // /health 端点跳过鉴权
+        if req.path() == "/health" {
+            let service = self.service.clone();
+            return Box::pin(async move {
+                let res = service.call(req).await?;
+                Ok(res.map_into_boxed_body())
+            });
+        }
+
         let key = match extract_bearer(&req) {
             Ok(k) => k,
             Err(resp) => {
@@ -58,9 +67,10 @@ where
         let api_key_cache = match req.app_data::<web::Data<ApiKeyCache>>() {
             Some(cache) => cache.get_ref().clone(),
             None => {
+                let err = internal_error_for(&req, "ApiKey cache not available");
                 return Box::pin(async move {
                     Ok(req
-                        .into_response(error::internal_error("ApiKey cache not available"))
+                        .into_response(err)
                         .map_into_boxed_body())
                 });
             }
@@ -76,26 +86,45 @@ where
                 let res = service.call(req).await?;
                 Ok(res.map_into_boxed_body())
             } else {
+                let err = unauthorized_for(&req);
                 Ok(req
-                    .into_response(error::unauthorized())
+                    .into_response(err)
                     .map_into_boxed_body())
             }
         })
     }
 }
 
+/// 根据请求路径返回对应协议格式的 401 未授权响应
+fn unauthorized_for(req: &ServiceRequest) -> HttpResponse {
+    if req.path().starts_with("/v1/messages") {
+        error::anthropic_unauthorized()
+    } else {
+        error::unauthorized()
+    }
+}
+
+/// 根据请求路径返回对应协议格式的 500 内部错误响应
+fn internal_error_for(req: &ServiceRequest, message: &str) -> HttpResponse {
+    if req.path().starts_with("/v1/messages") {
+        error::anthropic_internal_error(message)
+    } else {
+        error::internal_error(message)
+    }
+}
+
 /// 从请求头提取 `Bearer <key>` 中的 key。
-/// 缺失 `Authorization` 头或格式错误时返回 `error::unauthorized()` 响应。
+/// 缺失 `Authorization` 头或格式错误时根据请求路径返回对应格式的错误响应。
 fn extract_bearer(req: &ServiceRequest) -> Result<String, HttpResponse> {
     let header = req
         .headers()
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| error::unauthorized())?;
+        .ok_or_else(|| unauthorized_for(req))?;
 
     let key = header
         .strip_prefix("Bearer ")
-        .ok_or_else(|| error::unauthorized())?;
+        .ok_or_else(|| unauthorized_for(req))?;
 
     Ok(key.to_string())
 }

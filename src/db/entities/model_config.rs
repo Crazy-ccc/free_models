@@ -10,6 +10,7 @@ pub struct Model {
     pub name: String,
     pub model_id: String,
     pub timeout: i32,
+    pub protocols: String,
     pub priority: i32,
     pub is_active: bool,
     pub created_time: DateTime,

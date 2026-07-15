@@ -18,6 +18,15 @@ pub struct ModelProviderInfo {
     pub api_key: String,
     pub priority: i32,
     pub timeout: u64,
+    pub protocols: String,
+}
+
+impl ModelProviderInfo {
+    pub fn supports_protocol(&self, protocol: &str) -> bool {
+        self.protocols
+            .split(',')
+            .any(|p| p.trim() == protocol)
+    }
 }
 
 /// 将 model_config 列表结合 provider 缓存，组装为 ModelProviderInfo 列表
@@ -41,27 +50,11 @@ async fn collect_model_provider_infos(
                 api_key: provider.api_key,
                 priority: model.priority,
                 timeout: model.timeout as u64,
+                protocols: model.protocols.clone(),
             });
         }
     }
     Ok(result)
-}
-
-/// 按模型名称查询所有启用的 model_config，通过 ProviderCache 获取 provider，按 priority 升序排列
-#[allow(dead_code)]
-pub async fn get_models_by_name(
-    db: &DatabaseConnection,
-    model_name: &str,
-    provider_cache: &ProviderCache,
-) -> Result<Vec<ModelProviderInfo>, Box<dyn std::error::Error>> {
-    let models = model_config::Entity::find()
-        .filter(model_config::Column::Name.eq(model_name))
-        .filter(model_config::Column::IsActive.eq(true))
-        .order_by_asc(model_config::Column::Priority)
-        .all(db)
-        .await?;
-
-    collect_model_provider_infos(models, db, provider_cache).await
 }
 
 pub struct ModelCache {
@@ -70,10 +63,10 @@ pub struct ModelCache {
 }
 
 impl ModelCache {
-    pub fn new() -> Self {
+    pub fn new(ttl: Duration) -> Self {
         ModelCache {
             cache: Mutex::new(HashMap::new()),
-            ttl: Duration::from_secs(30),
+            ttl,
         }
     }
 
@@ -91,23 +84,11 @@ impl ModelCache {
         let mut cache = self.cache.lock().unwrap();
         cache.insert(model_name, (Instant::now(), models));
     }
-}
 
-/// 带缓存的模型查询
-#[allow(dead_code)]
-pub async fn get_models_with_cache(
-    db: &DatabaseConnection,
-    model_name: &str,
-    model_cache: &ModelCache,
-    provider_cache: &ProviderCache,
-) -> Result<Vec<ModelProviderInfo>, Box<dyn std::error::Error>> {
-    if let Some(cached) = model_cache.get(model_name) {
-        return Ok(cached);
+    pub fn clear(&self) {
+        let mut cache = self.cache.lock().unwrap();
+        cache.clear();
     }
-
-    let models = get_models_by_name(db, model_name, provider_cache).await?;
-    model_cache.set(model_name.to_string(), models.clone());
-    Ok(models)
 }
 
 /// 获取所有启用的模型名称列表（去重），用于 /v1/models 接口
@@ -155,11 +136,16 @@ pub struct ProviderCache {
 }
 
 impl ProviderCache {
-    pub fn new() -> Self {
+    pub fn new(ttl: Duration) -> Self {
         ProviderCache {
             cache: Mutex::new(HashMap::new()),
-            ttl: Duration::from_secs(600),
+            ttl,
         }
+    }
+
+    pub fn clear(&self) {
+        let mut cache = self.cache.lock().unwrap();
+        cache.clear();
     }
 }
 
