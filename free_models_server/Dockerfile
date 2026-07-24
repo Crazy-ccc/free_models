@@ -7,7 +7,8 @@ RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsing
     musl-dev \
     curl
 
-RUN rustup update stable && rustup default stable
+RUN RUSTUP_DIST_SERVER=https://mirrors.tuna.tsinghua.edu.cn/rustup \
+    rustup update stable && rustup default stable
 
 WORKDIR /app
 
