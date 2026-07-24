@@ -1,7 +1,7 @@
 [package]
 name = "free_models_server"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 actix-web = "4"
@@ -17,7 +17,7 @@ env_logger = "0.11"
 tokio = { version = "1", features = ["signal", "macros"] }
 ed25519-dalek = "3"
 sha2 = "0.11"
-base64 = "0.22"
+base64 = "0.23"
 redis = { version = "1", features = ["tokio-comp", "connection-manager"] }
 rand = "0.10"
 tiktoken-rs = "0.12.0"

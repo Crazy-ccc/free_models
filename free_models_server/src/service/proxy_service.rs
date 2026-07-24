@@ -1,7 +1,7 @@
 use actix_web::http::StatusCode;
 use actix_web::web;
 use actix_web::HttpResponse;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use reqwest::Client;
 use serde_json::Value;
 use std::time::Duration;
@@ -169,14 +169,11 @@ fn extract_usage_from_buffer(buffer: &[u8], protocol: Protocol) -> Option<UsageI
     let s = std::str::from_utf8(buffer).ok()?;
     for event in s.split("\n\n") {
         for line in event.lines() {
-            if let Some(data) = line.strip_prefix("data: ") {
-                if let Ok(json) = serde_json::from_str::<Value>(data) {
-                    if let Some(usage) = json.get("usage") {
-                        if !usage.is_null() {
-                            return Some(protocol.extract_usage(usage));
-                        }
-                    }
-                }
+            if let Some(data) = line.strip_prefix("data: ")
+                && let Ok(json) = serde_json::from_str::<Value>(data)
+                && let Some(usage) = json.get("usage")
+                && !usage.is_null() {
+                return Some(protocol.extract_usage(usage));
             }
         }
     }
@@ -324,7 +321,7 @@ async fn handle_stream_response(
 
                     if !logged_usage {
                         if let Some(info) = extract_usage_from_buffer(&buffer, protocol) {
-                            info!(
+                            debug!(
                                 "Model {} via provider {} stream usage: prompt_tokens={}, completion_tokens={}, total_tokens={}",
                                 model_info.model_name, model_info.provider_name,
                                 info.prompt_tokens, info.completion_tokens, info.total_tokens
@@ -407,7 +404,7 @@ async fn handle_non_stream_response(
 
     if let Ok(json_body) = serde_json::from_slice::<Value>(&body_bytes) {
         if let Some(usage) = json_body.get("usage") {
-            info!(
+            debug!(
                 "Model {} via provider {} usage: {}",
                 model_info.model_name, model_info.provider_name, usage
             );
