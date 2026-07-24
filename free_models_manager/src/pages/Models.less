@@ -293,6 +293,30 @@
   }
 }
 
+.status-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: @font-sm;
+  font-weight: 500;
+  line-height: 22px;
+
+  &.available {
+    background: #f0f9eb;
+    color: #52c41a;
+  }
+
+  &.unavailable {
+    background: #f5f5f5;
+    color: #8c8c8c;
+  }
+
+  &.deprecated {
+    background: #fff1f0;
+    color: #ff4d4f;
+  }
+}
+
 .clickable-name {
   cursor: pointer;
   color: @primary;
@@ -302,18 +326,4 @@
   }
 }
 
-.status-select {
-  height: @control-height;
-  padding: 0 8px;
-  border: 1px solid @outline;
-  border-radius: @radius-md;
-  background-color: @bg-container;
-  color: @on-surface;
-  font-size: @font-base;
-  cursor: pointer;
 
-  &:focus {
-    outline: none;
-    border-color: @primary;
-  }
-}

@@ -24,16 +24,6 @@ async fn get_service_status(state: tauri::State<'_, AppState>, server_url: Strin
 }
 
 #[tauri::command]
-async fn get_penalties(state: tauri::State<'_, AppState>, server_url: String) -> Result<Vec<Value>, String> {
-    let keypair = {
-        let kp = state.keypair.lock().map_err(|e| e.to_string())?;
-        kp.clone().ok_or_else(|| "Keypair not loaded. Please configure key paths in Settings.".to_string())?
-    };
-    let client = AdminClient::new(server_url, keypair);
-    client.get_penalties().await
-}
-
-#[tauri::command]
 async fn refresh_cache(state: tauri::State<'_, AppState>, server_url: String) -> Result<(), String> {
     let keypair = {
         let kp = state.keypair.lock().map_err(|e| e.to_string())?;
@@ -254,12 +244,6 @@ async fn test_provider_credential(state: tauri::State<'_, AppState>, server_url:
 }
 
 #[tauri::command]
-fn get_key_fingerprint(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
-    let keypair = state.keypair.lock().map_err(|e| e.to_string())?;
-    Ok(keypair.as_ref().map(|k| k.fingerprint.clone()))
-}
-
-#[tauri::command]
 fn get_keypair_fingerprint(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
     let keypair = state.keypair.lock().map_err(|e| e.to_string())?;
     Ok(keypair.as_ref().map(|k| k.fingerprint.clone()))
@@ -287,7 +271,6 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_service_status,
-            get_penalties,
             refresh_cache,
             fetch_providers,
             create_provider,
@@ -310,7 +293,6 @@ fn main() {
             update_provider_credential,
             delete_provider_credential,
             test_provider_credential,
-            get_key_fingerprint,
             get_keypair_fingerprint,
             load_keypair,
             fetch_provider_models_by_url,

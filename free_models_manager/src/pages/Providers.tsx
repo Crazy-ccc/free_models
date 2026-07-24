@@ -219,9 +219,9 @@ function Providers() {
     try {
       const result = await invoke<TestCredentialResult>('test_provider_credential', {
         serverUrl,
-        credential_id: cred.id,
-        model_id: modelId,
-        prompt: undefined,
+        credentialId: cred.id,
+        modelId: modelId,
+        prompt: '你好',
       });
       if (result.success) {
         Modal.info({
@@ -244,6 +244,7 @@ function Providers() {
   };
 
   const openTest = (cred: ProviderCredential) => {
+    if (testLoading) return;
     if (!credProvider) return;
     const providerModels = models.filter((m: any) => m.provider_id === credProvider.id);
     if (providerModels.length === 0) {
@@ -260,6 +261,7 @@ function Providers() {
   };
 
   const confirmTest = () => {
+    if (testLoading) return;
     if (!testCred) return;
     runTest(testCred, testModelId);
   };
@@ -459,7 +461,7 @@ function Providers() {
                         </div>
                         <div className="cred-actions">
                           <Toggle checked={c.is_active} onChange={() => toggleCredActive(c)} />
-                          <button className="ant-btn ant-btn-sm" onClick={() => openTest(c)}>测试</button>
+                          <button className="ant-btn ant-btn-sm" disabled={testLoading} onClick={() => openTest(c)}>测试</button>
                           <button className="ant-btn ant-btn-sm" onClick={() => openCredEdit(c)}>编辑</button>
                           <button className="ant-btn ant-btn-sm ant-btn-dangerous" onClick={() => handleCredDelete(c)}>删除</button>
                         </div>
@@ -517,7 +519,10 @@ function Providers() {
               {models
                 .filter((m: any) => m.provider_id === credProvider?.id)
                 .map((m: any) => (
-                  <label key={m.id} className="modal-row">
+                  <label
+                    key={m.id}
+                    className={`test-model-row${testModelId === m.model_id ? ' selected' : ''}`}
+                  >
                     <input
                       type="radio"
                       name="test-model"
@@ -526,7 +531,8 @@ function Providers() {
                       onChange={() => setTestModelId(m.model_id)}
                       disabled={testLoading}
                     />
-                    <span>{m.model_id}</span>
+                    <span className="test-model-name">{m.name}</span>
+                    <span className="test-model-id">{m.model_id}</span>
                   </label>
                 ))}
             </div>

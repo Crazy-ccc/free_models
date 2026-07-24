@@ -70,9 +70,9 @@ function Overview({ onStatusChange }: OverviewProps) {
             <div className="stat-group">
               <span className="stat-sub">总数:</span>
               <span className="stat-figure stat-total">{status?.models.total ?? 0}</span>
-              <span className="stat-sub">活跃:</span>
+              <span className="stat-sub">可用:</span>
               <span className="stat-figure stat-active">{status?.models.active ?? 0}</span>
-              <span className="stat-sub">未活跃:</span>
+              <span className="stat-sub">不可用:</span>
               <span className="stat-figure stat-inactive">{status?.models.inactive ?? 0}</span>
             </div>
           </div>
@@ -81,9 +81,9 @@ function Overview({ onStatusChange }: OverviewProps) {
             <div className="stat-group">
               <span className="stat-sub">总数:</span>
               <span className="stat-figure stat-total">{status?.providers.total ?? 0}</span>
-              <span className="stat-sub">活跃:</span>
+              <span className="stat-sub">可用:</span>
               <span className="stat-figure stat-active">{status?.providers.active ?? 0}</span>
-              <span className="stat-sub">未活跃:</span>
+              <span className="stat-sub">不可用:</span>
               <span className="stat-figure stat-inactive">{status?.providers.inactive ?? 0}</span>
             </div>
           </div>
@@ -92,9 +92,9 @@ function Overview({ onStatusChange }: OverviewProps) {
             <div className="stat-group">
               <span className="stat-sub">总数:</span>
               <span className="stat-figure stat-total">{status?.apiKeys.total ?? 0}</span>
-              <span className="stat-sub">活跃:</span>
+              <span className="stat-sub">可用:</span>
               <span className="stat-figure stat-active">{status?.apiKeys.active ?? 0}</span>
-              <span className="stat-sub">未活跃:</span>
+              <span className="stat-sub">不可用:</span>
               <span className="stat-figure stat-inactive">{status?.apiKeys.inactive ?? 0}</span>
             </div>
           </div>

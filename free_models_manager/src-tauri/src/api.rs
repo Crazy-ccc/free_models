@@ -20,7 +20,9 @@ impl AdminClient {
             .as_secs()
             .to_string();
         
-        let payload = format!("{}:{}:{}", method, path, timestamp);
+        // 签名只使用纯路径（不含 query string），服务端用 req.path() 验证同样不含 query
+        let sign_path = path.split('?').next().unwrap_or(path);
+        let payload = format!("{}:{}:{}", method, sign_path, timestamp);
         let signature = self.keypair.sign(&payload);
         
         let url = format!("{}{}", self.server_url, path);
@@ -46,14 +48,6 @@ impl AdminClient {
 
     pub async fn get_service_status(&self) -> Result<Value, String> {
         let resp = self.signed_request("GET", "/admin/service/status", None).await?;
-        if !resp.status().is_success() {
-            return Err(format!("HTTP {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
-
-    pub async fn get_penalties(&self) -> Result<Vec<Value>, String> {
-        let resp = self.signed_request("GET", "/admin/penalties", None).await?;
         if !resp.status().is_success() {
             return Err(format!("HTTP {}", resp.status()));
         }

@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 FROM rust:alpine AS builder
 
-RUN apk add --no-cache \
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories && \
+    apk add --no-cache \
     ca-certificates \
     musl-dev \
     curl
@@ -9,6 +10,9 @@ RUN apk add --no-cache \
 RUN rustup update stable && rustup default stable
 
 WORKDIR /app
+
+RUN mkdir -p $CARGO_HOME && \
+    printf '[source.crates-io]\nreplace-with = "tuna"\n\n[source.tuna]\nregistry = "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git"\n' > $CARGO_HOME/config.toml
 
 COPY Cargo.toml Cargo.lock ./
 COPY src src/
@@ -23,7 +27,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 FROM alpine:3.21
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories && \
+    apk add --no-cache ca-certificates tzdata
 
 COPY --from=builder --chown=nobody:nobody \
     /tmp/free_models_server /usr/local/bin/free_models_server

@@ -202,6 +202,51 @@
   border-top: 1px solid @outline-variant;
 }
 
+.test-model-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 0 -12px;
+  cursor: pointer;
+  border-radius: @radius-md;
+  font-size: @font-base;
+  color: @on-surface;
+  transition: background 0.15s;
+
+  &:hover {
+    background: @bg-layout;
+  }
+
+  &.selected {
+    background: fade(@primary, 8%);
+  }
+
+  input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: @primary;
+    flex-shrink: 0;
+  }
+
+  .test-model-name {
+    font-weight: 500;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .test-model-id {
+    font-size: @font-sm;
+    color: @on-surface-tertiary;
+    margin-left: auto;
+    font-family: @font-family-code;
+    flex-shrink: 0;
+  }
+}
+
 .modal-count {
   font-size: @font-sm;
   color: @on-surface-variant;

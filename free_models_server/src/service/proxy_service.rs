@@ -1,7 +1,6 @@
 use actix_web::http::StatusCode;
 use actix_web::web;
 use actix_web::HttpResponse;
-use futures_util::StreamExt;
 use log::{error, info, warn};
 use reqwest::Client;
 use serde_json::Value;
@@ -12,6 +11,12 @@ use crate::error;
 use crate::service::model_service::ModelProviderInfo;
 use crate::service::usage_log_service;
 use crate::util::penalty::PriorityPenalty;
+
+/// 日志状态常量，避免硬编码字符串
+pub mod log_status {
+    pub const SUCCESS: &str = "success";
+    pub const FAILED: &str = "failed";
+}
 
 /// 支持的协议类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +79,7 @@ impl Protocol {
                 let cached = usage
                     .get("prompt_tokens_details")
                     .and_then(|d| d.get("cached_tokens"))
+                    .and_then(|d| d.get("prompt_cache_hit_tokens"))
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0) as i32;
                 UsageInfo {
@@ -156,16 +162,20 @@ fn spawn_usage_log(
     });
 }
 
-fn try_parse_usage_from_sse_chunk(bytes: &[u8], protocol: Protocol) -> Option<UsageInfo> {
-    if !bytes.windows(7).any(|w| w == b"\"usage\"") {
-        return None;
-    }
-    let s = std::str::from_utf8(bytes).ok()?;
-    for line in s.lines() {
-        if let Some(data) = line.strip_prefix("data: ") {
-            if let Ok(json) = serde_json::from_str::<Value>(data) {
-                if json.get("usage").is_some() {
-                    return Some(protocol.extract_usage(json.get("usage")?));
+/// 扫描缓冲中的完整 SSE 事件，按 \n\n 分割提取，检测 usage 字段。
+/// 与旧的按 chunk 解析不同，此函数累积所有已收到的字节，在完整事件级别解析，
+/// 从而避免跨 chunk 边界的 usage 丢失。
+fn extract_usage_from_buffer(buffer: &[u8], protocol: Protocol) -> Option<UsageInfo> {
+    let s = std::str::from_utf8(buffer).ok()?;
+    for event in s.split("\n\n") {
+        for line in event.lines() {
+            if let Some(data) = line.strip_prefix("data: ") {
+                if let Ok(json) = serde_json::from_str::<Value>(data) {
+                    if let Some(usage) = json.get("usage") {
+                        if !usage.is_null() {
+                            return Some(protocol.extract_usage(usage));
+                        }
+                    }
                 }
             }
         }
@@ -222,6 +232,9 @@ async fn forward_to_provider(
     request_body["model"] = Value::String(model_info.model_id.clone());
     if is_stream {
         request_body["stream"] = Value::Bool(true);
+        if protocol == Protocol::OpenAI {
+            request_body["stream_options"] = serde_json::json!({"include_usage": true});
+        }
     }
 
     let mut request = client
@@ -290,44 +303,87 @@ async fn handle_stream_response(
     protocol: Protocol,
     start_time: std::time::Instant,
 ) -> HttpResponse {
-    let byte_stream = resp.bytes_stream();
+    use futures_util::StreamExt;
+
     let close_event = sse_close_event_for(protocol);
     let model_info = model_info.clone();
-    let db_clone = db.clone();
-    let api_key_id_clone = api_key_id;
-    let api_key_name_clone = api_key_name.map(|s| s.to_string());
-    let start_time_clone = start_time;
+    let db = db.clone();
+    let api_key_name = api_key_name.map(|s| s.to_string());
 
-    let stream = byte_stream.map(move |item| {
-        match item {
-            Ok(bytes) => {
-                if let Some(info) = try_parse_usage_from_sse_chunk(&bytes, protocol) {
-                    info!(
-                        "Model {} via provider {} stream usage: prompt_tokens={}, completion_tokens={}, total_tokens={}",
-                        model_info.model_name, model_info.provider_name, info.prompt_tokens, info.completion_tokens, info.total_tokens
-                    );
-                    spawn_usage_log(
-                        db_clone.clone(),
-                        &model_info,
-                        api_key_id_clone,
-                        api_key_name_clone.as_deref(),
-                        protocol,
-                        start_time_clone.elapsed().as_millis() as i32,
-                        true,
-                        info,
-                        "success",
-                        None,
-                    );
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<web::Bytes, actix_web::Error>>();
+
+    actix_web::rt::spawn(async move {
+        let mut upstream_stream = resp.bytes_stream();
+        let mut buffer = Vec::new();
+        let mut logged_usage = false;
+
+        while let Some(item) = upstream_stream.next().await {
+            match item {
+                Ok(bytes) => {
+                    buffer.extend_from_slice(&bytes);
+
+                    if !logged_usage {
+                        if let Some(info) = extract_usage_from_buffer(&buffer, protocol) {
+                            info!(
+                                "Model {} via provider {} stream usage: prompt_tokens={}, completion_tokens={}, total_tokens={}",
+                                model_info.model_name, model_info.provider_name,
+                                info.prompt_tokens, info.completion_tokens, info.total_tokens
+                            );
+                            spawn_usage_log(
+                                db.clone(),
+                                &model_info,
+                                api_key_id,
+                                api_key_name.as_deref(),
+                                protocol,
+                                start_time.elapsed().as_millis() as i32,
+                                true,
+                                info,
+                                log_status::SUCCESS,
+                                None,
+                            );
+                            logged_usage = true;
+                        }
+                    }
+
+                    if tx.send(Ok(bytes)).is_err() {
+                        break;
+                    }
                 }
-                Ok::<_, actix_web::Error>(web::Bytes::from(bytes.to_vec()))
+                Err(_) => {
+                    let _ = tx.send(Ok(close_event.clone()));
+                    break;
+                }
             }
-            Err(_) => Ok::<_, actix_web::Error>(close_event.clone()),
+        }
+
+        if !logged_usage {
+            if let Some(info) = extract_usage_from_buffer(&buffer, protocol) {
+                spawn_usage_log(
+                    db.clone(),
+                    &model_info,
+                    api_key_id,
+                    api_key_name.as_deref(),
+                    protocol,
+                    start_time.elapsed().as_millis() as i32,
+                    true,
+                    info,
+                    log_status::SUCCESS,
+                    None,
+                );
+            }
+        }
+    });
+
+    let rx_stream = futures_util::stream::unfold(rx, |mut rx| async move {
+        match rx.recv().await {
+            Some(item) => Some((item, rx)),
+            None => None,
         }
     });
 
     HttpResponse::Ok()
         .content_type("text/event-stream")
-        .streaming(stream)
+        .streaming(rx_stream)
 }
 
 async fn handle_non_stream_response(
@@ -365,7 +421,26 @@ async fn handle_non_stream_response(
                 duration_ms,
                 false,
                 info,
-                "success",
+                log_status::SUCCESS,
+                None,
+            );
+        } else {
+            spawn_usage_log(
+                db.clone(),
+                model_info,
+                api_key_id,
+                api_key_name,
+                protocol,
+                duration_ms,
+                false,
+                UsageInfo {
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    total_tokens: 0,
+                    cache_hit_tokens: 0,
+                    cache_miss_tokens: 0,
+                },
+                log_status::SUCCESS,
                 None,
             );
         }
@@ -402,10 +477,10 @@ async fn proxy_chat_completion_inner(
 
         match forward_to_provider(client, model_info, body, is_stream, protocol).await {
             ForwardOutcome::Success(resp) => {
-                if is_stream {
-                    return Ok(handle_stream_response(resp, model_info, db, api_key_id, api_key_name, protocol, start_time).await);
+                return if is_stream {
+                    Ok(handle_stream_response(resp, model_info, db, api_key_id, api_key_name, protocol, start_time).await)
                 } else {
-                    return handle_non_stream_response(resp, model_info, db, api_key_id, api_key_name, protocol, start_time).await;
+                    handle_non_stream_response(resp, model_info, db, api_key_id, api_key_name, protocol, start_time).await
                 }
             }
             ForwardOutcome::Retry => {
@@ -433,7 +508,7 @@ async fn proxy_chat_completion_inner(
                 cache_hit_tokens: 0,
                 cache_miss_tokens: 0,
             },
-            "failed",
+            log_status::FAILED,
             Some("All providers failed"),
         );
     }

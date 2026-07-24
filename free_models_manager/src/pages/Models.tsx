@@ -168,6 +168,7 @@ function Models() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterProviderIds, setFilterProviderIds] = useState<Set<string>>(new Set());
   const [filterProtocols, setFilterProtocols] = useState<Set<string>>(new Set());
+  const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set());
   const [prioritySort, setPrioritySort] = useState<'asc' | 'desc' | null>(null);
   const serverUrl = localStorage.getItem('server_url') || 'http://localhost:8080';
 
@@ -204,13 +205,16 @@ function Models() {
     if (filterProtocols.size > 0) {
       result = result.filter((m) => protocolsOf(m).some((p) => filterProtocols.has(p)));
     }
+    if (filterStatuses.size > 0) {
+      result = result.filter((m) => filterStatuses.has(m.status));
+    }
     if (prioritySort) {
       result = [...result].sort((a, b) =>
         prioritySort === 'asc' ? a.priority - b.priority : b.priority - a.priority
       );
     }
     return result;
-  }, [models, searchQuery, filterProviderIds, filterProtocols, prioritySort]);
+  }, [models, searchQuery, filterProviderIds, filterProtocols, filterStatuses, prioritySort]);
 
   const togglePrioritySort = () => {
     setPrioritySort((prev) => (prev === 'asc' ? 'desc' : prev === 'desc' ? null : 'asc'));
@@ -283,26 +287,13 @@ function Models() {
     });
   };
 
-  const handleStatusChange = async (m: Model, newStatus: string) => {
-    const prevStatus = m.status;
-    setModels((prev) =>
-      prev.map((item) => (item.id === m.id ? { ...item, status: newStatus as Model['status'] } : item))
-    );
-    try {
-      await invoke<Model>('update_model', {
-        serverUrl,
-        id: m.id,
-        data: { ...m, status: newStatus },
-      });
-    } catch (e) {
-      console.error(e);
-      setModels((prev) =>
-        prev.map((item) => (item.id === m.id ? { ...item, status: prevStatus } : item))
-      );
-    } finally {
-      load();
-    }
-  };
+  const STATUS_OPTIONS = [
+    { value: 'available', label: '可用' },
+    { value: 'unavailable', label: '不可用' },
+    { value: 'deprecated', label: '废弃' },
+  ];
+
+  const statusLabel = (s: string) => STATUS_OPTIONS.find((o) => o.value === s)?.label ?? s;
 
   const selectProtocol = (p: string) => {
     setForm((f) => ({ ...f, protocols: [p] }));
@@ -344,7 +335,15 @@ function Models() {
               </th>
               <th>超时</th>
               <th>上下文长度</th>
-              <th>状态</th>
+              <th>
+                <ColFilter
+                  title="状态"
+                  options={STATUS_OPTIONS}
+                  selected={filterStatuses}
+                  onConfirm={(s) => setFilterStatuses(s)}
+                  onReset={() => setFilterStatuses(new Set())}
+                />
+              </th>
               <th>操作</th>
             </tr>
           </thead>
@@ -367,15 +366,7 @@ function Models() {
                   <td>{m.timeout}s</td>
                   <td>{m.context_length.toLocaleString()}</td>
                   <td>
-                    <select
-                      className="status-select"
-                      value={m.status}
-                      onChange={(e) => handleStatusChange(m, e.target.value)}
-                    >
-                      <option value="available">可用</option>
-                      <option value="unavailable">不可用</option>
-                      <option value="deprecated">废弃</option>
-                    </select>
+                    <span className={`status-tag ${m.status}`}>{statusLabel(m.status)}</span>
                   </td>
                   <td>
                     <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openEdit(m); }}>编辑</button>
