@@ -1,5 +1,6 @@
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
+use log::info;
 use serde_json::Value;
 
 use crate::response;
@@ -71,9 +72,8 @@ impl Protocol {
                 let cached = usage
                     .get("prompt_tokens_details")
                     .and_then(|d| d.get("cached_tokens"))
-                    .and_then(|d| d.get("prompt_cache_hit_tokens"))
                     .and_then(|v| v.as_i64())
-                    .unwrap_or(0) as i32;
+                    .unwrap_or(get_i64(usage, "prompt_cache_hit_tokens")) as i32;
                 UsageInfo {
                     prompt_tokens: prompt,
                     completion_tokens: completion,
