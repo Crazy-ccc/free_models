@@ -1,14 +1,11 @@
 # syntax=docker/dockerfile:1
-FROM rust:alpine AS builder
+FROM rust:1.97.1-alpine AS builder
 
 RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories && \
     apk add --no-cache \
     ca-certificates \
     musl-dev \
     curl
-
-RUN RUSTUP_DIST_SERVER=https://mirrors.tuna.tsinghua.edu.cn/rustup \
-    rustup update stable && rustup default stable
 
 WORKDIR /app
 
