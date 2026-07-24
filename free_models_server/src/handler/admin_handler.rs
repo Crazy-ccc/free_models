@@ -2,8 +2,8 @@ use actix_web::{web, HttpResponse};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 
-use crate::error;
-use crate::service::{api_key_service, model_service_ext, provider_credential_service, provider_service};
+use crate::response;
+use crate::service::{api_key_service, model_service_ext, provider_credential_service, provider_service, proxy_service};
 use crate::AppState;
 use crate::db::entities::{api_key, model_config, provider_config, provider_credential};
 use crate::util::crud;
@@ -124,13 +124,18 @@ impl ProviderCredentialResponse {
             Some(p) => Some(encryption::decrypt(&p, key)?),
             None => None,
         };
+        let masked_key = if api_key.len() > 4 {
+            format!("{}****", &api_key[..4])
+        } else {
+            "****".to_string()
+        };
         Ok(ProviderCredentialResponse {
             id: m.id,
             provider_id: m.provider_id,
             name: m.name,
-            api_key,
+            api_key: masked_key,
             account: m.account,
-            password,
+            password: password.map(|_| "****".to_string()),
             priority: m.priority,
             is_active: m.is_active,
             created_time: m.created_time,
@@ -148,12 +153,12 @@ fn credential_result_response(
             Ok(resp) => HttpResponse::Ok().json(resp),
             Err(e) => {
                 eprintln!("Decrypt error: {}", e);
-                error::db_error()
+                response::db_error()
             }
         },
         Err(e) => {
             eprintln!("{}", e);
-            error::db_error()
+            response::db_error()
         }
     }
 }
@@ -181,7 +186,7 @@ pub async fn get_service_status(state: web::Data<AppState>) -> HttpResponse {
     let counts = [&active_models, &total_models, &active_providers, &total_providers, &active_api_keys, &total_api_keys];
     for res in &counts {
         if res.is_err() {
-            return error::db_error();
+            return response::db_error();
         }
     }
 
@@ -228,7 +233,7 @@ macro_rules! handle_result {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => {
                 eprintln!("{}", e);
-                error::db_error()
+                response::db_error()
             }
         }
     };
@@ -241,7 +246,7 @@ macro_rules! handle_find {
             Ok(None) => HttpResponse::NotFound().json(serde_json::json!({"error": $not_found})),
             Err(e) => {
                 eprintln!("{}", e);
-                error::db_error()
+                response::db_error()
             }
         }
     };
@@ -254,7 +259,7 @@ macro_rules! handle_delete {
             Ok(false) => HttpResponse::NotFound().json(serde_json::json!({"error": $not_found})),
             Err(e) => {
                 eprintln!("{}", e);
-                error::db_error()
+                response::db_error()
             }
         }
     };
@@ -274,6 +279,9 @@ pub async fn create_provider(
     state: web::Data<AppState>,
     body: web::Json<CreateProviderRequest>,
 ) -> HttpResponse {
+    if !is_valid_base_url(&body.base_url) {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid base_url format"}));
+    }
     handle_result!(provider_service::create(&state.db, &body.name, &body.base_url).await)
 }
 
@@ -282,7 +290,14 @@ pub async fn update_provider(
     path: web::Path<i32>,
     body: web::Json<UpdateProviderRequest>,
 ) -> HttpResponse {
+    if !is_valid_base_url(&body.base_url) {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid base_url format"}));
+    }
     handle_result!(provider_service::update(&state.db, path.into_inner(), &body.name, &body.base_url).await)
+}
+
+fn is_valid_base_url(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
 }
 
 pub async fn delete_provider(state: web::Data<AppState>, path: web::Path<i32>) -> HttpResponse {
@@ -375,7 +390,7 @@ pub async fn list_provider_credentials(
         }
         Err(e) => {
             eprintln!("{}", e);
-            error::db_error()
+            response::db_error()
         }
     }
 }
@@ -448,7 +463,7 @@ pub async fn test_credential(
         Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Credential not found"})),
         Err(e) => {
             eprintln!("{}", e);
-            return error::db_error();
+            return response::db_error();
         }
     };
 
@@ -478,7 +493,7 @@ pub async fn test_credential(
         Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Model not found for this provider"})),
         Err(e) => {
             eprintln!("{}", e);
-            return error::db_error();
+            return response::db_error();
         }
     };
 
@@ -492,6 +507,10 @@ pub async fn test_credential(
     } else {
         format!("{}/chat/completions", provider.base_url.trim_end_matches('/'))
     };
+
+    if let Err(e) = proxy_service::validate_url_safe(&url).await {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": format!("SSRF check failed: {}", e)}));
+    }
 
     let prompt_text = body.prompt.clone().unwrap_or_else(|| "Hello".to_string());
     let request_body = serde_json::json!({

@@ -96,7 +96,7 @@ impl RedisManager {
         }
     }
 
-    pub async fn srem(&self, key: &str, members: &[String]) -> Result<(), redis::RedisError> {
+    pub async fn _srem(&self, key: &str, members: &[String]) -> Result<(), redis::RedisError> {
         match &self.client {
             Some(client) => {
                 let mut conn = client.clone();

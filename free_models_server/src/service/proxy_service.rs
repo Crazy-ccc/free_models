@@ -5,166 +5,14 @@ use log::{debug, error, info, warn};
 use reqwest::Client;
 use serde_json::Value;
 use std::time::Duration;
-use sea_orm::DatabaseConnection;
 
-use crate::error;
 use crate::service::model_service::ModelProviderInfo;
-use crate::service::usage_log_service;
 use crate::util::penalty::PriorityPenalty;
-
-/// 日志状态常量，避免硬编码字符串
-pub mod log_status {
-    pub const SUCCESS: &str = "success";
-    pub const FAILED: &str = "failed";
-}
-
-/// 支持的协议类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Protocol {
-    OpenAI,
-    Anthropic,
-}
-
-impl Protocol {
-    /// 返回上游 API 路径（不含 base_url）
-    pub fn path(&self) -> &'static str {
-        match self {
-            Protocol::OpenAI => "/chat/completions",
-            Protocol::Anthropic => "/messages",
-        }
-    }
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Protocol::OpenAI => "openai",
-            Protocol::Anthropic => "anthropic",
-        }
-    }
-
-    pub fn internal_error(&self, message: &str) -> HttpResponse {
-        match self {
-            Protocol::OpenAI => error::internal_error(message),
-            Protocol::Anthropic => error::anthropic_internal_error(message),
-        }
-    }
-
-    pub fn service_unavailable(&self, message: &str) -> HttpResponse {
-        match self {
-            Protocol::OpenAI => error::service_unavailable(message),
-            Protocol::Anthropic => error::anthropic_service_unavailable(message),
-        }
-    }
-
-    pub fn bad_request(&self, message: &str) -> HttpResponse {
-        match self {
-            Protocol::OpenAI => error::openai_error(
-                StatusCode::BAD_REQUEST,
-                message,
-                "invalid_request_error",
-            ),
-            Protocol::Anthropic => error::anthropic_bad_request(message),
-        }
-    }
-
-    pub fn extract_usage(&self, usage: &Value) -> UsageInfo {
-        fn get_i64(v: &Value, key: &str) -> i64 {
-            v.get(key).and_then(|v| v.as_i64()).unwrap_or(0)
-        }
-
-        match self {
-            Protocol::OpenAI => {
-                let prompt = get_i64(usage, "prompt_tokens") as i32;
-                let completion = get_i64(usage, "completion_tokens") as i32;
-                let total = get_i64(usage, "total_tokens") as i32;
-                let cached = usage
-                    .get("prompt_tokens_details")
-                    .and_then(|d| d.get("cached_tokens"))
-                    .and_then(|d| d.get("prompt_cache_hit_tokens"))
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0) as i32;
-                UsageInfo {
-                    prompt_tokens: prompt,
-                    completion_tokens: completion,
-                    total_tokens: total,
-                    cache_hit_tokens: cached,
-                    cache_miss_tokens: prompt - cached,
-                }
-            }
-            Protocol::Anthropic => {
-                let input = get_i64(usage, "input_tokens") as i32;
-                let output = get_i64(usage, "output_tokens") as i32;
-                let cache_read = get_i64(usage, "cache_read_input_tokens") as i32;
-                UsageInfo {
-                    prompt_tokens: input,
-                    completion_tokens: output,
-                    total_tokens: input + output,
-                    cache_hit_tokens: cache_read,
-                    cache_miss_tokens: input,
-                }
-            }
-        }
-    }
-}
-
-/// 从上游响应的 usage 对象中提取 token 指标，兼容 OpenAI 和 Anthropic 两种格式
-pub struct UsageInfo {
-    prompt_tokens: i32,
-    completion_tokens: i32,
-    total_tokens: i32,
-    cache_hit_tokens: i32,
-    cache_miss_tokens: i32,
-}
-
-fn spawn_usage_log(
-    db: DatabaseConnection,
-    model_info: &ModelProviderInfo,
-    api_key_id: Option<i32>,
-    api_key_name: Option<&str>,
-    protocol: Protocol,
-    duration_ms: i32,
-    is_stream: bool,
-    info: UsageInfo,
-    status: &str,
-    error_message: Option<&str>,
-) {
-    let model_name = model_info.model_name.clone();
-    let provider_name = model_info.provider_name.clone();
-    let model_config_id = model_info.model_config_id;
-    let provider_config_id = model_info.provider_config_id;
-    let provider_credential_id = model_info.provider_credential_id;
-    let api_key_name = api_key_name.map(|s| s.to_string());
-    let protocol_str = protocol.as_str().to_string();
-    let status = status.to_string();
-    let error_message = error_message.map(|s| s.to_string());
-    actix_web::rt::spawn(async move {
-        if let Err(e) = usage_log_service::create(
-            &db,
-            api_key_id,
-            api_key_name.as_deref(),
-            Some(model_config_id),
-            Some(provider_config_id),
-            Some(provider_credential_id),
-            &model_name,
-            &provider_name,
-            &protocol_str,
-            &status,
-            error_message.as_deref(),
-            info.prompt_tokens,
-            info.completion_tokens,
-            info.total_tokens,
-            info.cache_hit_tokens,
-            info.cache_miss_tokens,
-            duration_ms,
-            is_stream,
-        ).await {
-            log::error!("Failed to persist usage log: {}", e);
-        }
-    });
-}
+pub(crate) use crate::util::proxy_ssrf::validate_url_safe;
+pub(crate) use crate::util::proxy_types::{log_status, Protocol, UsageInfo};
+use crate::util::usage_log_collector::spawn_usage_log;
 
 /// 扫描缓冲中的完整 SSE 事件，按 \n\n 分割提取，检测 usage 字段。
-/// 与旧的按 chunk 解析不同，此函数累积所有已收到的字节，在完整事件级别解析，
-/// 从而避免跨 chunk 边界的 usage 丢失。
 fn extract_usage_from_buffer(buffer: &[u8], protocol: Protocol) -> Option<UsageInfo> {
     let s = std::str::from_utf8(buffer).ok()?;
     for event in s.split("\n\n") {
@@ -182,9 +30,7 @@ fn extract_usage_from_buffer(buffer: &[u8], protocol: Protocol) -> Option<UsageI
 
 /// 上游转发结果：区分"成功""需重试"两种情况
 enum ForwardOutcome {
-    /// 上游返回 2xx，携带响应供调用方构造最终回复
     Success(reqwest::Response),
-    /// 上游返回 4xx 5xx 或网络错误，应跳过并尝试下一个 provider
     Retry,
 }
 
@@ -209,9 +55,6 @@ fn sse_close_event_for(protocol: Protocol) -> web::Bytes {
 }
 
 /// 向单个 provider 发送请求并做初步状态码判断。
-///
-/// 公共的"构建 URL + 设置 header + 发送请求 + 4xx/5xx/网络错误分流"逻辑都收敛于此，
-/// 两个公开函数（流式/非流式）仅负责把 `Success` 响应转换成对应格式。
 async fn forward_to_provider(
     client: &Client,
     model_info: &ModelProviderInfo,
@@ -224,6 +67,11 @@ async fn forward_to_provider(
         model_info.base_url.trim_end_matches('/'),
         protocol.path()
     );
+
+    if let Err(e) = validate_url_safe(&url).await {
+        warn!("SSRF check failed for {}: {}", url, e);
+        return ForwardOutcome::Retry;
+    }
 
     let mut request_body = body.clone();
     request_body["model"] = Value::String(model_info.model_id.clone());
@@ -241,7 +89,6 @@ async fn forward_to_provider(
         .json(&request_body)
         .timeout(Duration::from_secs(model_info.timeout));
 
-    // 按协议设置认证头
     request = match protocol {
         Protocol::OpenAI => request.header("Authorization", format!("Bearer {}", model_info.api_key)),
         Protocol::Anthropic => request
@@ -294,7 +141,6 @@ fn all_models_unavailable(models: &[ModelProviderInfo], protocol: Protocol) -> H
 async fn handle_stream_response(
     resp: reqwest::Response,
     model_info: &ModelProviderInfo,
-    db: &DatabaseConnection,
     api_key_id: Option<i32>,
     api_key_name: Option<&str>,
     protocol: Protocol,
@@ -304,7 +150,6 @@ async fn handle_stream_response(
 
     let close_event = sse_close_event_for(protocol);
     let model_info = model_info.clone();
-    let db = db.clone();
     let api_key_name = api_key_name.map(|s| s.to_string());
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<web::Bytes, actix_web::Error>>();
@@ -327,7 +172,6 @@ async fn handle_stream_response(
                                 info.prompt_tokens, info.completion_tokens, info.total_tokens
                             );
                             spawn_usage_log(
-                                db.clone(),
                                 &model_info,
                                 api_key_id,
                                 api_key_name.as_deref(),
@@ -356,7 +200,6 @@ async fn handle_stream_response(
         if !logged_usage {
             if let Some(info) = extract_usage_from_buffer(&buffer, protocol) {
                 spawn_usage_log(
-                    db.clone(),
                     &model_info,
                     api_key_id,
                     api_key_name.as_deref(),
@@ -386,7 +229,6 @@ async fn handle_stream_response(
 async fn handle_non_stream_response(
     resp: reqwest::Response,
     model_info: &ModelProviderInfo,
-    db: &DatabaseConnection,
     api_key_id: Option<i32>,
     api_key_name: Option<&str>,
     protocol: Protocol,
@@ -410,7 +252,6 @@ async fn handle_non_stream_response(
             );
             let info = protocol.extract_usage(&usage);
             spawn_usage_log(
-                db.clone(),
                 model_info,
                 api_key_id,
                 api_key_name,
@@ -423,7 +264,6 @@ async fn handle_non_stream_response(
             );
         } else {
             spawn_usage_log(
-                db.clone(),
                 model_info,
                 api_key_id,
                 api_key_name,
@@ -449,10 +289,8 @@ async fn handle_non_stream_response(
 }
 
 /// 公共重试循环：遍历模型、转发、惩罚失败模型、全部失败返回 503。
-/// `is_stream` 控制转发模式与成功响应的构建方式。
 async fn proxy_chat_completion_inner(
     client: &Client,
-    db: &DatabaseConnection,
     body: &Value,
     models: &[ModelProviderInfo],
     penalty: &web::Data<PriorityPenalty>,
@@ -475,9 +313,9 @@ async fn proxy_chat_completion_inner(
         match forward_to_provider(client, model_info, body, is_stream, protocol).await {
             ForwardOutcome::Success(resp) => {
                 return if is_stream {
-                    Ok(handle_stream_response(resp, model_info, db, api_key_id, api_key_name, protocol, start_time).await)
+                    Ok(handle_stream_response(resp, model_info, api_key_id, api_key_name, protocol, start_time).await)
                 } else {
-                    handle_non_stream_response(resp, model_info, db, api_key_id, api_key_name, protocol, start_time).await
+                    handle_non_stream_response(resp, model_info, api_key_id, api_key_name, protocol, start_time).await
                 }
             }
             ForwardOutcome::Retry => {
@@ -491,7 +329,6 @@ async fn proxy_chat_completion_inner(
     let duration_ms = start_time.elapsed().as_millis() as i32;
     if let Some(last_info) = last_model_info {
         spawn_usage_log(
-            db.clone(),
             last_info,
             api_key_id,
             api_key_name,
@@ -516,7 +353,6 @@ async fn proxy_chat_completion_inner(
 /// 非流式代理转发（带故障切换）
 pub async fn proxy_chat_completion(
     client: &Client,
-    db: &DatabaseConnection,
     body: &Value,
     models: &[ModelProviderInfo],
     penalty: &web::Data<PriorityPenalty>,
@@ -527,7 +363,6 @@ pub async fn proxy_chat_completion(
 ) -> Result<HttpResponse, HttpResponse> {
     proxy_chat_completion_inner(
         client,
-        db,
         body,
         models,
         penalty,
@@ -543,7 +378,6 @@ pub async fn proxy_chat_completion(
 /// 流式代理转发（SSE，带故障切换）
 pub async fn proxy_chat_completion_stream(
     client: &Client,
-    db: &DatabaseConnection,
     body: &Value,
     models: &[ModelProviderInfo],
     penalty: &web::Data<PriorityPenalty>,
@@ -554,7 +388,6 @@ pub async fn proxy_chat_completion_stream(
 ) -> Result<HttpResponse, HttpResponse> {
     proxy_chat_completion_inner(
         client,
-        db,
         body,
         models,
         penalty,

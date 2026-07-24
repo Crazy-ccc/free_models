@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::future::{ready, Ready};
 use std::rc::Rc;
 
@@ -28,6 +30,7 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         ready(Ok(AdminAuthMiddlewareService {
             service: Rc::new(service),
+            used_nonces: Rc::new(RefCell::new(HashMap::new())),
         }))
     }
 }
@@ -35,6 +38,7 @@ where
 #[derive(Clone)]
 pub struct AdminAuthMiddlewareService<S> {
     service: Rc<S>,
+    used_nonces: Rc<RefCell<HashMap<String, u64>>>,
 }
 
 impl<S, B> Service<ServiceRequest> for AdminAuthMiddlewareService<S>
@@ -100,6 +104,18 @@ where
             }
         };
 
+        let nonce = req
+            .headers()
+            .get("X-Admin-Nonce")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.to_string());
+
+        let body_hash = req
+            .headers()
+            .get("X-Admin-Body-Hash")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.to_string());
+
         let timestamp: u64 = match timestamp_str.parse() {
             Ok(t) => t,
             Err(_) => {
@@ -124,6 +140,22 @@ where
             });
         }
 
+        if let Some(ref n) = nonce {
+            let mut cache = self.used_nonces.borrow_mut();
+            // Clean expired entries (older than 300s)
+            cache.retain(|_, ts| now.saturating_sub(*ts) <= 300);
+            if cache.contains_key(n) {
+                return Box::pin(async move {
+                    Ok(req
+                        .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
+                            "error": "Nonce already used"
+                        })))
+                        .map_into_boxed_body())
+                });
+            }
+            cache.insert(n.clone(), now);
+        }
+
         let db = match req.app_data::<web::Data<AppState>>() {
             Some(state) => state.db.clone(),
             None => {
@@ -141,6 +173,8 @@ where
 
         let method = req.method().to_string();
         let path = req.path().to_string();
+        let nonce_part = nonce.as_deref().unwrap_or("").to_string();
+        let body_hash_part = body_hash.as_deref().unwrap_or("").to_string();
         let service = self.service.clone();
 
         Box::pin(async move {
@@ -181,7 +215,7 @@ where
                 }
             };
 
-            let payload = format!("{}:{}:{}", method, path, timestamp);
+            let payload = format!("{}:{}:{}:{}:{}", method, path, timestamp, nonce_part, body_hash_part);
             let signature_bytes = match base64::engine::general_purpose::STANDARD.decode(&signature)
             {
                 Ok(b) => b,

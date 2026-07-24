@@ -6,7 +6,7 @@ use actix_web::dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Tr
 use actix_web::{web, Error, HttpResponse};
 use futures_util::future::LocalBoxFuture;
 
-use crate::error;
+use crate::response;
 use crate::AppState;
 
 pub struct AuthMiddleware;
@@ -98,18 +98,18 @@ where
 /// 根据请求路径返回对应协议格式的 401 未授权响应
 fn unauthorized_for(req: &ServiceRequest) -> HttpResponse {
     if is_anthropic_request(req) {
-        error::anthropic_unauthorized()
+        response::anthropic_unauthorized()
     } else {
-        error::unauthorized()
+        response::unauthorized()
     }
 }
 
 /// 根据请求路径返回对应协议格式的 500 内部错误响应
 fn internal_error_for(req: &ServiceRequest, message: &str) -> HttpResponse {
     if is_anthropic_request(req) {
-        error::anthropic_internal_error(message)
+        response::anthropic_internal_error(message)
     } else {
-        error::internal_error(message)
+        response::internal_error(message)
     }
 }
 

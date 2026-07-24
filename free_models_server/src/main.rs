@@ -1,8 +1,9 @@
+mod app;
 mod config;
 mod db;
-mod error;
 mod handler;
 mod middleware;
+mod response;
 mod service;
 mod util;
 
@@ -10,8 +11,6 @@ use std::time::Duration;
 
 use actix_web::{web, App, HttpServer, middleware as actix_middleware};
 use log::info;
-use reqwest::Client;
-use sea_orm::DatabaseConnection;
 
 use crate::middleware::admin_auth::AdminAuthMiddleware;
 use crate::middleware::auth::AuthMiddleware;
@@ -20,16 +19,8 @@ use crate::service::model_service::{ModelCache, ProviderCache};
 use util::penalty::PriorityPenalty;
 use config::Config;
 
-pub struct AppState {
-    pub db: DatabaseConnection,
-    pub model_cache: ModelCache,
-    pub provider_cache: ProviderCache,
-    pub client: Client,
-    pub priority_penalty: web::Data<PriorityPenalty>,
-    pub redis: db::redis::RedisManager,
-    pub api_key_cache: ApiKeyCache,
-    pub encryption_key: [u8; 32],
-}
+use crate::app::AppState;
+use crate::util::usage_log_collector::init_usage_log_collector;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -57,12 +48,7 @@ async fn main() -> std::io::Result<()> {
     let api_key_cache = ApiKeyCache::load_all(&db, redis_manager.clone()).await;
     info!("API key cache loaded");
 
-    let client = Client::builder()
-        .pool_max_idle_per_host(20)
-        .pool_idle_timeout(Duration::from_secs(90))
-        .tcp_keepalive(Duration::from_secs(30))
-        .build()
-        .expect("Failed to build HTTP client");
+    let client = app::build_client();
 
     let priority_penalty = web::Data::new(PriorityPenalty::new(redis_manager.clone(), config.redis_cache_ttl_penalty));
     let app_state = web::Data::new(AppState {
@@ -75,10 +61,12 @@ async fn main() -> std::io::Result<()> {
         api_key_cache: api_key_cache.clone(),
         encryption_key: config.encryption_key,
     });
+    let log_collector = init_usage_log_collector(db.clone());
     let server = HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
             .app_data(priority_penalty.clone())
+            .app_data(web::PayloadConfig::new(10 * 1024 * 1024))
             .wrap(AuthMiddleware)
             .wrap(actix_middleware::Logger::default())
             .route("/health", web::get().to(handler::chat_handler::health_check))
@@ -116,6 +104,8 @@ async fn main() -> std::io::Result<()> {
                 server_handle.stop(false).await;
             }
         }
+        log_collector.shutdown().await;
+        info!("Usage log collector flushed");
     });
 
     server.await?;

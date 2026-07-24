@@ -4,7 +4,7 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value;
 
 use crate::AppState;
-use crate::error;
+use crate::response;
 use crate::service::api_key_service;
 use crate::service::model_service;
 use crate::service::proxy_service;
@@ -57,7 +57,7 @@ pub async fn list_models(state: web::Data<AppState>) -> HttpResponse {
                 "data": models
             }))
         }
-        Err(e) => error::internal_error(&format!("Failed to list models: {}", e)),
+        Err(e) => response::internal_error(&format!("Failed to list models: {}", e)),
     }
 }
 
@@ -154,7 +154,6 @@ async fn handle_chat_request(
     if is_stream {
         proxy_service::proxy_chat_completion_stream(
             &state.client,
-            &state.db,
             &body,
             &models,
             &state.priority_penalty,
@@ -168,7 +167,6 @@ async fn handle_chat_request(
     } else {
         proxy_service::proxy_chat_completion(
             &state.client,
-            &state.db,
             &body,
             &models,
             &state.priority_penalty,

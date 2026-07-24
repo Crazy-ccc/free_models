@@ -1,5 +1,7 @@
+use rand::Rng;
 use reqwest::{Client, Method};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use crate::crypto::KeyPair;
 
 pub struct AdminClient {
@@ -19,12 +21,28 @@ impl AdminClient {
             .unwrap()
             .as_secs()
             .to_string();
-        
+
+        // 生成随机 nonce（16 个 hex 字符 = 8 字节）
+        let mut nonce_bytes = [0u8; 8];
+        rand::thread_rng().fill(&mut nonce_bytes);
+        let nonce = nonce_bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+
+        // 计算 SHA-256 body hash
+        let body_hash = match &body {
+            Some(b) => {
+                let mut hasher = Sha256::new();
+                hasher.update(b.as_bytes());
+                let hash = hasher.finalize();
+                hash.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+            }
+            None => String::new(),
+        };
+
         // 签名只使用纯路径（不含 query string），服务端用 req.path() 验证同样不含 query
         let sign_path = path.split('?').next().unwrap_or(path);
-        let payload = format!("{}:{}:{}", method, sign_path, timestamp);
+        let payload = format!("{}:{}:{}:{}:{}", method, sign_path, timestamp, nonce, body_hash);
         let signature = self.keypair.sign(&payload);
-        
+
         let url = format!("{}{}", self.server_url, path);
         let method = match method {
             "GET" => Method::GET,
@@ -36,13 +54,17 @@ impl AdminClient {
         let mut req = self.client.request(method, &url);
         req = req.header("X-Admin-Fingerprint", &self.keypair.fingerprint);
         req = req.header("X-Admin-Timestamp", &timestamp);
+        req = req.header("X-Admin-Nonce", &nonce);
         req = req.header("X-Admin-Signature", &signature);
-        
+        if !body_hash.is_empty() {
+            req = req.header("X-Admin-Body-Hash", &body_hash);
+        }
+
         if let Some(body) = body {
             req = req.header("Content-Type", "application/json");
             req = req.body(body);
         }
-        
+
         req.send().await.map_err(|e| e.to_string())
     }
 
