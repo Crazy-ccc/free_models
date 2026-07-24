@@ -1,0 +1,280 @@
+use reqwest::{Client, Method};
+use serde_json::Value;
+use crate::crypto::KeyPair;
+
+pub struct AdminClient {
+    client: Client,
+    server_url: String,
+    keypair: KeyPair,
+}
+
+impl AdminClient {
+    pub fn new(server_url: String, keypair: KeyPair) -> Self {
+        AdminClient { client: Client::new(), server_url, keypair }
+    }
+
+    async fn signed_request(&self, method: &str, path: &str, body: Option<String>) -> Result<reqwest::Response, String> {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .to_string();
+        
+        let payload = format!("{}:{}:{}", method, path, timestamp);
+        let signature = self.keypair.sign(&payload);
+        
+        let url = format!("{}{}", self.server_url, path);
+        let method = match method {
+            "GET" => Method::GET,
+            "POST" => Method::POST,
+            "PUT" => Method::PUT,
+            "DELETE" => Method::DELETE,
+            _ => return Err("Invalid method".to_string()),
+        };
+        let mut req = self.client.request(method, &url);
+        req = req.header("X-Admin-Fingerprint", &self.keypair.fingerprint);
+        req = req.header("X-Admin-Timestamp", &timestamp);
+        req = req.header("X-Admin-Signature", &signature);
+        
+        if let Some(body) = body {
+            req = req.header("Content-Type", "application/json");
+            req = req.body(body);
+        }
+        
+        req.send().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn get_service_status(&self) -> Result<Value, String> {
+        let resp = self.signed_request("GET", "/admin/service/status", None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn get_penalties(&self) -> Result<Vec<Value>, String> {
+        let resp = self.signed_request("GET", "/admin/penalties", None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn refresh_cache(&self) -> Result<(), String> {
+        let resp = self.signed_request("POST", "/admin/cache/refresh", None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        Ok(())
+    }
+
+    pub async fn list_providers(&self) -> Result<Vec<Value>, String> {
+        let resp = self.signed_request("GET", "/admin/providers", None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn create_provider(&self, data: Value) -> Result<Value, String> {
+        let body = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("POST", "/admin/providers", Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn get_provider(&self, id: i32) -> Result<Value, String> {
+        let resp = self.signed_request("GET", &format!("/admin/providers/{}", id), None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn update_provider(&self, id: i32, data: Value) -> Result<Value, String> {
+        let body = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("PUT", &format!("/admin/providers/{}", id), Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn delete_provider(&self, id: i32) -> Result<(), String> {
+        let resp = self.signed_request("DELETE", &format!("/admin/providers/{}", id), None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        Ok(())
+    }
+
+    pub async fn list_models(&self) -> Result<Vec<Value>, String> {
+        let resp = self.signed_request("GET", "/admin/models", None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn create_model(&self, data: Value) -> Result<Value, String> {
+        let body = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("POST", "/admin/models", Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn get_model(&self, id: i32) -> Result<Value, String> {
+        let resp = self.signed_request("GET", &format!("/admin/models/{}", id), None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn update_model(&self, id: i32, data: Value) -> Result<Value, String> {
+        let body = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("PUT", &format!("/admin/models/{}", id), Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn delete_model(&self, id: i32) -> Result<(), String> {
+        let resp = self.signed_request("DELETE", &format!("/admin/models/{}", id), None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        Ok(())
+    }
+
+    pub async fn list_api_keys(&self) -> Result<Vec<Value>, String> {
+        let resp = self.signed_request("GET", "/admin/api_keys", None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn create_api_key(&self, data: Value) -> Result<Value, String> {
+        let body = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("POST", "/admin/api_keys", Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn get_api_key(&self, id: i32) -> Result<Value, String> {
+        let resp = self.signed_request("GET", &format!("/admin/api_keys/{}", id), None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn update_api_key(&self, id: i32, data: Value) -> Result<Value, String> {
+        let body = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("PUT", &format!("/admin/api_keys/{}", id), Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn delete_api_key(&self, id: i32) -> Result<(), String> {
+        let resp = self.signed_request("DELETE", &format!("/admin/api_keys/{}", id), None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        Ok(())
+    }
+
+    pub async fn list_provider_credentials(&self, provider_id: Option<i32>) -> Result<Vec<Value>, String> {
+        let path = match provider_id {
+            Some(pid) => format!("/admin/provider_credentials?provider_id={}", pid),
+            None => "/admin/provider_credentials".to_string(),
+        };
+        let resp = self.signed_request("GET", &path, None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn create_provider_credential(&self, data: Value) -> Result<Value, String> {
+        let body = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("POST", "/admin/provider_credentials", Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn get_provider_credential(&self, id: i32) -> Result<Value, String> {
+        let resp = self.signed_request("GET", &format!("/admin/provider_credentials/{}", id), None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn update_provider_credential(&self, id: i32, data: Value) -> Result<Value, String> {
+        let body = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("PUT", &format!("/admin/provider_credentials/{}", id), Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn delete_provider_credential(&self, id: i32) -> Result<(), String> {
+        let resp = self.signed_request("DELETE", &format!("/admin/provider_credentials/{}", id), None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        Ok(())
+    }
+
+    pub async fn test_provider_credential(&self, credential_id: i32, model_id: String, prompt: Option<String>) -> Result<Value, String> {
+        let body = serde_json::json!({
+            "credential_id": credential_id,
+            "model_id": model_id,
+            "prompt": prompt,
+        });
+        let body = serde_json::to_string(&body).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("POST", "/admin/test_credential", Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct ProviderModel {
+    pub id: String,
+}
+
+pub async fn fetch_provider_models(base_url: &str) -> Result<Vec<ProviderModel>, String> {
+    let url = format!("{}/models", base_url.trim_end_matches('/'));
+    let client = Client::new();
+    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let json: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let data = json.get("data").and_then(|d| d.as_array()).ok_or("missing data array")?;
+    let models: Vec<ProviderModel> = data
+        .iter()
+        .filter_map(|item| {
+            let id = item.get("id")?.as_str()?.to_string();
+            Some(ProviderModel { id })
+        })
+        .collect();
+    Ok(models)
+}

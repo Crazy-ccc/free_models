@@ -1,0 +1,123 @@
+@import '../styles/variables.less';
+
+.api-keys-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.api-keys-table-wrap {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  padding: 0 0 24px;
+}
+
+.api-keys-table {
+  width: 100%;
+  min-width: 600px;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: @bg-container;
+
+  th {
+    padding: @padding-table-header;
+    background-color: @bg-container;
+    color: @on-surface;
+    font-weight: @font-weight-strong;
+    font-size: @font-base;
+    text-align: center;
+    border-bottom: 1px solid @outline-variant;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: @padding-table-cell;
+    border-bottom: 1px solid @outline-variant;
+    color: @on-surface;
+    font-size: @font-base;
+    white-space: nowrap;
+  }
+
+  tbody tr {
+    transition: background-color @motion-fast @ease-in-out;
+  }
+
+  tbody tr:hover td {
+    background-color: @bg-hover;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.api-keys-row {
+  cursor: pointer;
+}
+
+.clickable-name {
+  cursor: pointer;
+  color: @primary;
+  &:hover {
+    color: @primary-hover;
+  }
+}
+
+.api-keys-key {
+  font-family: @font-family-code;
+  font-size: @font-sm;
+  color: @on-surface-variant;
+}
+
+.api-keys-time {
+  font-size: @font-sm;
+  color: @on-surface-variant;
+  font-family: @font-family-code;
+}
+
+.api-keys-empty {
+  text-align: center;
+  color: @on-surface-disabled;
+  padding: 32px 16px;
+}
+
+.api-keys-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 6px;
+
+  label {
+    font-size: @font-base;
+    color: @on-surface;
+    margin-bottom: 6px;
+  }
+
+  input {
+    height: @control-height;
+  }
+}
+
+.key-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  input {
+    flex: 1;
+    padding-right: 60px;
+    height: @control-height;
+  }
+}
+
+.key-toggle-btn {
+  position: absolute;
+  right: 8px;
+}
+

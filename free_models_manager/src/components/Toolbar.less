@@ -1,0 +1,51 @@
+@import '../styles/variables.less';
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: @spacing-md @spacing-lg;
+  background-color: @bg-container;
+  border-bottom: 1px solid @outline-variant;
+}
+
+.toolbar-title {
+  font-family: @font-family;
+  font-size: @font-md;
+  font-weight: @font-weight-strong;
+  color: @on-surface;
+  line-height: 1.5;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: @spacing-sm;
+}
+
+.toolbar-search {
+  width: 180px;
+  height: @control-height;
+  padding: @padding-input;
+  font-family: @font-family;
+  font-size: @font-base;
+  color: @on-surface;
+  background-color: @bg-container;
+  border: 1px solid @outline;
+  border-radius: @radius-default;
+  outline: none;
+  transition: border-color @motion-fast @ease-in-out, box-shadow @motion-fast @ease-in-out;
+}
+
+.toolbar-search::placeholder {
+  color: @on-surface-tertiary;
+}
+
+.toolbar-search:hover {
+  border-color: @primary-hover;
+}
+
+.toolbar-search:focus {
+  border-color: @primary;
+  box-shadow: 0 0 0 2px @bg-selected;
+}

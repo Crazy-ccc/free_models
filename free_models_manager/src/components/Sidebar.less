@@ -1,0 +1,80 @@
+@import '../styles/variables.less';
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: @sidebar-width;
+  height: 100%;
+  background-color: @bg-container;
+  border-right: 1px solid @outline-variant;
+  flex-shrink: 0;
+}
+
+.sidebar-brand {
+  padding: @spacing-md;
+  font-family: @font-family;
+  font-size: @font-md;
+  font-weight: @font-weight-strong;
+  color: @on-surface;
+  line-height: 1.5;
+  border-bottom: 1px solid @outline-variant;
+}
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: @spacing-xs 0;
+}
+
+.sidebar-nav-item {
+  height: @sidebar-item-height;
+  display: flex;
+  align-items: center;
+  padding: 0 @spacing-md;
+  font-family: @font-family;
+  font-size: @font-base;
+  color: @on-surface;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color @motion-fast @ease-in-out, color @motion-fast @ease-in-out;
+}
+
+.sidebar-nav-item:hover {
+  background-color: @bg-hover;
+}
+
+.sidebar-nav-item.active {
+  background-color: @bg-selected;
+  color: @primary;
+  font-weight: @font-weight-strong;
+}
+
+.sidebar-footer {
+  border-top: 1px solid @outline-variant;
+}
+
+.sidebar-status {
+  display: flex;
+  align-items: center;
+  padding: @spacing-md;
+  gap: @spacing-sm;
+}
+
+.sidebar-status-dot {
+  width: @badge-size;
+  height: @badge-size;
+  border-radius: @radius-full;
+  background-color: @on-surface-disabled;
+  flex-shrink: 0;
+}
+
+.sidebar-status-dot.ok {
+  background-color: @success;
+}
+
+.sidebar-status-text {
+  font-family: @font-family;
+  font-size: @font-sm;
+  color: @on-surface-variant;
+}

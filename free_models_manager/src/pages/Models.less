@@ -1,0 +1,319 @@
+@import '../styles/variables.less';
+
+.models-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.antd-filter {
+  position: relative;
+  display: inline-block;
+}
+
+.antd-filter-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: @radius-sm;
+  background: transparent;
+  color: @on-surface-variant;
+  cursor: pointer;
+  transition: all @motion-fast @ease-in-out;
+
+  &:hover {
+    background: @bg-hover;
+    color: @primary;
+  }
+
+  &.active {
+    color: @primary;
+    background: @info-bg;
+  }
+}
+
+.antd-filter-dropdown {
+  position: fixed !important;
+  z-index: 9999;
+  background: @bg-container;
+  border-radius: @radius-md;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  border: 1px solid @outline-variant;
+  overflow: hidden;
+}
+
+.antd-filter-search {
+  padding: 8px;
+
+  .ant-input {
+    width: 100%;
+    height: 32px;
+    padding: 4px 8px;
+    border: 1px solid @outline;
+    border-radius: @radius-sm;
+    background: @bg-layout;
+    color: @on-surface;
+    font-size: @font-base;
+    box-sizing: border-box;
+
+    &:focus {
+      outline: none;
+      border-color: @primary;
+    }
+  }
+}
+
+.antd-filter-options {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.antd-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: @font-base;
+  color: @on-surface;
+  cursor: pointer;
+  transition: background @motion-fast @ease-in-out;
+
+  &:hover {
+    background: @bg-hover;
+  }
+
+  &.selected {
+    color: @on-surface;
+  }
+
+  input[type="checkbox"] {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    accent-color: @primary;
+  }
+}
+
+.antd-filter-empty {
+  padding: 12px;
+  text-align: center;
+  color: @on-surface-tertiary;
+  font-size: @font-sm;
+}
+
+.antd-filter-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-top: 1px solid @outline-variant;
+  gap: 8px;
+}
+
+.antd-filter-btn {
+  flex: 1;
+  height: 28px;
+  border-radius: @radius-sm;
+  font-size: @font-sm;
+  cursor: pointer;
+  transition: all @motion-fast @ease-in-out;
+  text-align: center;
+  line-height: 28px;
+}
+
+.antd-filter-btn-reset {
+  border: 1px solid @outline;
+  background: transparent;
+  color: @on-surface;
+
+  &:hover {
+    border-color: @primary;
+    color: @primary;
+  }
+}
+
+.antd-filter-btn-ok {
+  border: none;
+  background: @primary;
+  color: #fff;
+
+  &:hover {
+    background: @primary-hover;
+  }
+}
+
+.models-table-wrap {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.models-table {
+  width: 100%;
+  min-width: 800px;
+  border-collapse: collapse;
+  background-color: @bg-container;
+
+  th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 16px;
+    font-size: @font-base;
+    font-weight: 600;
+    color: @on-surface;
+    background: @bg-container;
+    border-bottom: 1px solid @outline-variant;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .sortable-th {
+    cursor: pointer;
+    user-select: none;
+
+    &:hover {
+      color: @primary;
+    }
+  }
+
+  td {
+    padding: 12px 16px;
+    font-size: @font-base;
+    color: @on-surface;
+    border-bottom: 1px solid @outline-variant;
+    white-space: nowrap;
+  }
+
+  tbody tr {
+    transition: background-color @motion-fast @ease-in-out;
+  }
+
+  tbody tr:hover td {
+    background: @bg-hover;
+  }
+}
+
+.models-empty {
+  padding: 40px 0;
+  text-align: center;
+  color: @on-surface-tertiary;
+}
+
+.protocol-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: @radius-md;
+  font-size: @font-sm;
+  font-weight: @font-weight-regular;
+  line-height: 20px;
+  margin-right: @spacing-xs;
+  border: 1px solid transparent;
+
+  &.openai {
+    background: @info-bg;
+    border-color: @info-border;
+    color: @blue-7;
+  }
+
+  &.anthropic {
+    background: @purple-bg;
+    border-color: #D3ADF7;
+    color: @purple;
+  }
+}
+
+.protocol-select {
+  display: flex;
+  gap: @spacing-sm;
+}
+
+.protocol-tag-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: @control-height;
+  padding: 0 @spacing-md;
+  border-radius: @radius-default;
+  font-size: @font-base;
+  border: 1px solid @outline;
+  color: @on-surface;
+  background: @bg-container;
+  cursor: pointer;
+  user-select: none;
+  transition: all @motion-fast @ease-in-out;
+
+  &.selected {
+    border-color: @primary;
+    color: @primary;
+    background: @info-bg;
+  }
+
+  &:hover {
+    border-color: @primary;
+  }
+}
+
+.form-field {
+  margin-bottom: @spacing-md;
+}
+
+.form-label {
+  display: block;
+  color: @on-surface;
+  font-size: @font-base;
+  font-weight: @font-weight-regular;
+  margin-bottom: 6px;
+}
+
+.form-input,
+.form-select,
+.form-number {
+  width: 100%;
+  height: @control-height;
+}
+
+.form-number {
+  width: 100%;
+}
+
+.form-row {
+  display: flex;
+  gap: @spacing-md;
+
+  .form-field {
+    flex: 1;
+  }
+}
+
+.clickable-name {
+  cursor: pointer;
+  color: @primary;
+
+  &:hover {
+    color: @primary-hover;
+  }
+}
+
+.status-select {
+  height: @control-height;
+  padding: 0 8px;
+  border: 1px solid @outline;
+  border-radius: @radius-md;
+  background-color: @bg-container;
+  color: @on-surface;
+  font-size: @font-base;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: @primary;
+  }
+}

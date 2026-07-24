@@ -1,0 +1,366 @@
+@import './variables.less';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: @font-family;
+  font-size: @font-base;
+  font-weight: @font-weight-regular;
+  line-height: 1.5715;
+  color: @on-surface;
+  background-color: @bg-layout;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  display: flex;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: @outline;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: @on-surface-disabled;
+}
+
+// ===== Ant 风格 Button =====
+.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: @control-height;
+  padding: @padding-button;
+  border: 1px solid @outline;
+  border-radius: @radius-default;
+  background-color: @bg-container;
+  color: @on-surface;
+  font-family: @font-family;
+  font-size: @font-base;
+  font-weight: @font-weight-regular;
+  line-height: 1;
+  cursor: pointer;
+  transition: all @motion-fast @ease-in-out;
+  user-select: none;
+}
+
+.ant-btn:hover {
+  color: @primary-hover;
+  border-color: @primary-hover;
+}
+
+.ant-btn-primary {
+  background-color: @primary;
+  border-color: @primary;
+  color: #ffffff;
+  box-shadow: 0 2px 0 rgba(5, 145, 255, 0.06);
+}
+
+.ant-btn-primary:hover {
+  background-color: @primary-hover;
+  border-color: @primary-hover;
+  color: #ffffff;
+}
+
+.ant-btn-primary:active {
+  background-color: @primary-active;
+  border-color: @primary-active;
+  color: #ffffff;
+}
+
+.ant-btn-dangerous {
+  color: @error;
+  border-color: @error;
+  background-color: @bg-container;
+}
+
+.ant-btn-dangerous:hover {
+  color: #ffffff;
+  background-color: @error;
+  border-color: @error;
+}
+
+.ant-btn-text {
+  background: transparent;
+  border-color: transparent;
+  color: @on-surface-variant;
+}
+
+.ant-btn-text:hover {
+  background-color: @bg-hover;
+  color: @primary-hover;
+  border-color: transparent;
+}
+
+.ant-btn-link {
+  background: transparent;
+  border-color: transparent;
+  color: @primary;
+  padding: 0;
+  height: auto;
+}
+
+.ant-btn-link:hover {
+  color: @primary-hover;
+  border-color: transparent;
+}
+
+// ===== Ant 风格 Input =====
+input,
+select,
+textarea,
+.ant-input {
+  width: 100%;
+  height: @control-height;
+  padding: @padding-input;
+  background-color: @bg-container;
+  color: @on-surface;
+  border: 1px solid @outline;
+  border-radius: @radius-default;
+  font-family: @font-family;
+  font-size: @font-base;
+  line-height: 1.5715;
+  outline: none;
+  transition: all @motion-fast @ease-in-out;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+.ant-input:focus {
+  border-color: @primary;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  color: @on-surface-disabled;
+  background-color: @bg-disabled;
+  cursor: not-allowed;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: @on-surface-disabled;
+}
+
+textarea {
+  height: auto;
+  min-height: 80px;
+  padding: 8px 11px;
+}
+
+// ===== Ant 风格 Table =====
+.ant-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: @font-base;
+  color: @on-surface;
+  background: @bg-container;
+
+  thead th {
+    padding: @padding-table-header;
+    background-color: @bg-container;
+    color: @on-surface;
+    font-weight: @font-weight-strong;
+    font-size: @font-base;
+    text-align: left;
+    border-bottom: 1px solid @outline-variant;
+  }
+
+  tbody td {
+    padding: @padding-table-cell;
+    border-bottom: 1px solid @outline-variant;
+    color: @on-surface;
+    font-size: @font-base;
+  }
+
+  tbody tr {
+    transition: background-color @motion-fast @ease-in-out;
+  }
+
+  tbody tr:hover td {
+    background-color: @bg-hover;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+// ===== Ant 风格 Tag =====
+.ant-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  font-size: @font-sm;
+  line-height: 20px;
+  border-radius: @radius-md;
+  border: 1px solid @outline;
+  background-color: @bg-container;
+  color: @on-surface;
+}
+
+.ant-tag-success {
+  color: @green-7;
+  background: @success-bg;
+  border-color: @success-border;
+}
+
+.ant-tag-error {
+  color: @error;
+  background: @error-bg;
+  border-color: @error-border;
+}
+
+.ant-tag-warning {
+  color: @warning;
+  background: @warning-bg;
+  border-color: @warning-border;
+}
+
+.ant-tag-blue {
+  color: @blue-7;
+  background: @info-bg;
+  border-color: @info-border;
+}
+
+.ant-tag-purple {
+  color: @purple;
+  background: @purple-bg;
+  border-color: #D3ADF7;
+}
+
+.ant-tag-cyan {
+  color: @cyan;
+  background: @cyan-bg;
+  border-color: #87E8DE;
+}
+
+.ant-tag-orange {
+  color: @orange;
+  background: @orange-bg;
+  border-color: #FFD591;
+}
+
+.ant-tag-geekblue {
+  color: @geekblue;
+  background: @geekblue-bg;
+  border-color: #ADC6FF;
+}
+
+.ant-tag-default {
+  color: @on-surface-variant;
+  background: @bg-container;
+  border-color: @outline;
+}
+
+// ===== Ant 风格 Card =====
+.ant-card {
+  background-color: @bg-container;
+  border-radius: @radius-lg;
+  padding: @padding-card;
+  box-shadow: @shadow-card;
+  border: 1px solid @outline-variant;
+}
+
+.ant-card-bordered {
+  border: 1px solid @outline-variant;
+}
+
+// ===== Ant 风格 Alert =====
+.ant-alert {
+  padding: 8px 12px;
+  border-radius: @radius-default;
+  font-size: @font-base;
+  line-height: 1.5715;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+}
+
+.ant-alert-success {
+  color: @on-surface;
+  background-color: @success-bg;
+  border-color: @success-border;
+}
+
+.ant-alert-error {
+  color: @error;
+  background-color: @error-bg;
+  border-color: @error-border;
+}
+
+.ant-alert-warning {
+  color: @warning;
+  background-color: @warning-bg;
+  border-color: @warning-border;
+}
+
+.ant-alert-info {
+  color: @info;
+  background-color: @info-bg;
+  border-color: @info-border;
+}
+
+// ===== App Shell =====
+.app-shell {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+  background-color: @bg-layout;
+}
+
+.page-placeholder {
+  padding: @spacing-lg;
+  color: @on-surface-variant;
+  font-size: @font-md;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes antSpin {
+  to { transform: rotate(360deg); }
+}

@@ -1,0 +1,235 @@
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { CopyOutlined } from '@ant-design/icons';
+import { Modal } from 'antd';
+import Toolbar from '../components/Toolbar';
+import Toggle from '../components/Toggle';
+import Drawer from '../components/Drawer';
+import { invoke } from '@tauri-apps/api/core';
+import type { ApiKey } from '../types';
+import './ApiKeys.less';
+
+function maskKey(key: string): string {
+  if (!key) return '';
+  if (key.length <= 7) return '****';
+  return `${key.slice(0, 3)}****...${key.slice(-4)}`;
+}
+
+function formatTime(time?: string): string {
+  if (!time) return '-';
+  const d = new Date(time);
+  if (isNaN(d.getTime())) return time;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function ApiKeys() {
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingKey, setEditingKey] = useState<ApiKey | null>(null);
+  const [formName, setFormName] = useState('');
+  const [formKeyValue, setFormKeyValue] = useState('');
+  const [formIsActive, setFormIsActive] = useState(true);
+  const [showKeyValue, setShowKeyValue] = useState(false);
+
+  const serverUrl = localStorage.getItem('server_url') || 'http://localhost:8080';
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredApiKeys = useMemo(() => {
+    if (!searchQuery) return apiKeys;
+    const q = searchQuery.toLowerCase();
+    return apiKeys.filter((k) =>
+      k.name.toLowerCase().includes(q)
+    );
+  }, [apiKeys, searchQuery]);
+
+  const loadApiKeys = () => {
+    invoke<ApiKey[]>('fetch_api_keys', { serverUrl }).then(setApiKeys);
+  };
+
+  useEffect(() => {
+    loadApiKeys();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const openAdd = () => {
+    setEditingKey(null);
+    setFormName('');
+    setFormKeyValue('');
+    setFormIsActive(true);
+    setShowKeyValue(false);
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (key: ApiKey) => {
+    setEditingKey(key);
+    setFormName(key.name);
+    setFormKeyValue(key.key_value);
+    setFormIsActive(key.is_active);
+    setShowKeyValue(false);
+    setDrawerOpen(true);
+  };
+
+  const handleClose = () => {
+    setDrawerOpen(false);
+  };
+
+  const handleSave = async () => {
+    if (editingKey) {
+      const payload = {
+        name: formName,
+        key_value: formKeyValue,
+        is_active: formIsActive,
+      };
+      await invoke<ApiKey>('update_api_key', { serverUrl, id: editingKey.id, data: payload });
+      setDrawerOpen(false);
+      loadApiKeys();
+    } else {
+      const payload = {
+        name: formName,
+        is_active: formIsActive,
+      };
+      await invoke<ApiKey>('create_api_key', { serverUrl, data: payload });
+      setDrawerOpen(false);
+      loadApiKeys();
+    }
+  };
+
+  const handleDeleteRow = async (key: ApiKey) => {
+    Modal.confirm({
+      title: '确定删除？',
+      content: `将删除 API Key「${key.name}」`,
+      okText: '确定',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await invoke('delete_api_key', { serverUrl, id: key.id });
+        loadApiKeys();
+      },
+    });
+  };
+
+  const handleToggleActive = async (key: ApiKey, checked: boolean) => {
+    const prevState = key.is_active;
+    setApiKeys((prev) =>
+      prev.map((k) => (k.id === key.id ? { ...k, is_active: checked } : k))
+    );
+    try {
+      await invoke<ApiKey>('update_api_key', {
+        serverUrl,
+        id: key.id,
+        data: { ...key, is_active: checked },
+      });
+    } catch (e) {
+      console.error(e);
+      setApiKeys((prev) =>
+        prev.map((k) => (k.id === key.id ? { ...k, is_active: prevState } : k))
+      );
+    } finally {
+      loadApiKeys();
+    }
+  };
+
+  const handleCopy = (e: MouseEvent, key: string) => {
+    e.stopPropagation();
+    if (key) {
+      navigator.clipboard.writeText(key);
+    }
+  };
+
+  return (
+    <div className="api-keys-page">
+      <Toolbar title="API Keys" showSearch={true} searchValue={searchQuery} onSearchChange={setSearchQuery}>
+        <button className="ant-btn ant-btn-primary" onClick={openAdd}>+ 新增</button>
+      </Toolbar>
+      <div className="api-keys-table-wrap">
+        <table className="api-keys-table">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>Key</th>
+              <th>状态</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredApiKeys.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="api-keys-empty">暂无数据</td>
+              </tr>
+            ) : (
+              filteredApiKeys.map((k) => (
+                <tr key={k.id}>
+                  <td className="clickable-name" onClick={() => openEdit(k)}>{k.name}</td>
+                  <td>
+                    <span className="api-keys-key">{maskKey(k.key_value)}</span>
+                    <CopyOutlined
+                      style={{ cursor: 'pointer', color: '#1677FF', marginLeft: 8 }}
+                      onClick={(e) => handleCopy(e as any, k.key_value)}
+                    />
+                  </td>
+                  <td>
+                    <Toggle checked={k.is_active} onChange={(checked) => handleToggleActive(k, checked)} />
+                  </td>
+                  <td className="api-keys-time">{formatTime(k.created_time)}</td>
+                  <td>
+                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openEdit(k); }}>编辑</button>
+                    <button className="ant-btn ant-btn-dangerous" onClick={(e) => { e.stopPropagation(); handleDeleteRow(k); }}>删除</button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      <Drawer
+        open={drawerOpen}
+        title={editingKey ? '编辑 API Key' : '新增 API Key'}
+        onClose={handleClose}
+        onSave={handleSave}
+      >
+        <div className="api-keys-form">
+          <div className="form-field">
+            <label>名称</label>
+            <input
+              className="ant-input"
+              type="text"
+              value={formName}
+              onChange={(e) => setFormName(e.target.value)}
+              placeholder="输入名称"
+            />
+          </div>
+          {editingKey && (
+          <div className="form-field">
+            <label>Key Value</label>
+            <div className="key-input-wrap">
+              <input
+                className="ant-input"
+                type={showKeyValue ? 'text' : 'password'}
+                value={formKeyValue}
+                onChange={(e) => setFormKeyValue(e.target.value)}
+                placeholder="输入 Key Value"
+              />
+              <button
+                type="button"
+                className="ant-btn ant-btn-text key-toggle-btn"
+                onClick={() => setShowKeyValue(!showKeyValue)}
+              >
+                {showKeyValue ? '隐藏' : '显示'}
+              </button>
+            </div>
+          </div>
+          )}
+          <div className="form-field">
+            <label>状态</label>
+            <div className="toggle-wrap">
+              <Toggle checked={formIsActive} onChange={setFormIsActive} />
+            </div>
+          </div>
+        </div>
+      </Drawer>
+    </div>
+  );
+}
+
+export default ApiKeys;
