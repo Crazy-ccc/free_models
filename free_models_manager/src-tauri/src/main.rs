@@ -325,25 +325,13 @@ async fn fetch_usage_log_stats(
     group_by: String,
     start_time: Option<String>,
     end_time: Option<String>,
-    provider_id: Option<i32>,
-    credential_id: Option<i32>,
-    model_id: Option<i32>,
-    api_key_id: Option<i32>,
 ) -> Result<Value, String> {
     let keypair = {
         let kp = state.keypair.lock().map_err(|e| e.to_string())?;
         kp.clone().ok_or_else(|| "Keypair not loaded. Please configure key paths in Settings.".to_string())?
     };
     let client = AdminClient::new(server_url, keypair);
-    client.usage_log_stats(
-        &group_by,
-        start_time.as_deref(),
-        end_time.as_deref(),
-        provider_id,
-        credential_id,
-        model_id,
-        api_key_id,
-    ).await
+    client.usage_log_stats(&group_by, start_time.as_deref(), end_time.as_deref()).await
 }
 
 fn main() {

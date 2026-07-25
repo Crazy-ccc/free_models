@@ -13,6 +13,289 @@ function maskApiKey(key: string): string {
   return `${key.slice(0, 3)}****${key.slice(-4)}`;
 }
 
+/* ───── 凭证管理子页面 ───── */
+
+function CredentialsPage({
+  providerId,
+  providerName,
+  serverUrl,
+  models,
+  onBack,
+}: {
+  providerId: number;
+  providerName: string;
+  serverUrl: string;
+  models: any[];
+  onBack: () => void;
+}) {
+  const [credentials, setCredentials] = useState<ProviderCredential[]>([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingCred, setEditingCred] = useState<ProviderCredential | null>(null);
+  const [form, setForm] = useState({
+    name: '',
+    api_key: '',
+    account: '',
+    password: '',
+    priority: 0,
+    is_active: true,
+  });
+
+  const [testOpen, setTestOpen] = useState(false);
+  const [testCred, setTestCred] = useState<ProviderCredential | null>(null);
+  const [testModelId, setTestModelId] = useState('');
+  const [testLoading, setTestLoading] = useState(false);
+
+  const load = () => {
+    invoke<ProviderCredential[]>('fetch_provider_credentials', { serverUrl, providerId })
+      .then(setCredentials)
+      .catch(() => setCredentials([]));
+  };
+
+  useEffect(() => {
+    load();
+  }, [providerId]);
+
+  const openCreate = () => {
+    setEditingCred(null);
+    setForm({ name: '', api_key: '', account: '', password: '', priority: 0, is_active: true });
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (cred: ProviderCredential) => {
+    setEditingCred(cred);
+    setForm({
+      name: cred.name,
+      api_key: cred.api_key,
+      account: cred.account ?? '',
+      password: cred.password ?? '',
+      priority: cred.priority,
+      is_active: cred.is_active,
+    });
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setEditingCred(null);
+  };
+
+  const handleSave = async () => {
+    try {
+      const payload = {
+        provider_id: providerId,
+        name: form.name || undefined,
+        api_key: form.api_key,
+        account: form.account || null,
+        password: form.password || null,
+        priority: form.priority,
+        is_active: form.is_active,
+      };
+      if (editingCred) {
+        await invoke('update_provider_credential', { serverUrl, id: editingCred.id, data: payload });
+      } else {
+        await invoke('create_provider_credential', { serverUrl, data: payload });
+      }
+      closeDrawer();
+      load();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDelete = (cred: ProviderCredential) => {
+    Modal.confirm({
+      title: '确定删除？',
+      content: `将删除凭证「${cred.name || cred.id}」`,
+      okText: '确定',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await invoke('delete_provider_credential', { serverUrl, id: cred.id });
+        load();
+      },
+    });
+  };
+
+  const toggleActive = async (cred: ProviderCredential) => {
+    const newActive = !cred.is_active;
+    setCredentials(prev => prev.map(c => c.id === cred.id ? { ...c, is_active: newActive } : c));
+    try {
+      await invoke('update_provider_credential', {
+        serverUrl,
+        id: cred.id,
+        data: { provider_id: cred.provider_id, is_active: newActive, account: cred.account || null, password: cred.password || null },
+      });
+    } catch (e) {
+      setCredentials(prev => prev.map(c => c.id === cred.id ? { ...c, is_active: !newActive } : c));
+    }
+  };
+
+  const runTest = async (cred: ProviderCredential, modelId: string) => {
+    setTestLoading(true);
+    try {
+      const result = await invoke<TestCredentialResult>('test_provider_credential', {
+        serverUrl,
+        credentialId: cred.id,
+        modelId,
+        prompt: '你好',
+      });
+      if (result.success) {
+        Modal.info({ title: '测试成功', content: `模型 ${result.model_id} 响应时间 ${result.response_time_ms}ms` });
+      } else {
+        Modal.error({ title: '测试失败', content: result.error || '未知错误' });
+      }
+    } catch (e: any) {
+      Modal.error({ title: '测试失败', content: String(e) });
+    } finally {
+      setTestLoading(false);
+      setTestOpen(false);
+      setTestCred(null);
+    }
+  };
+
+  const openTest = (cred: ProviderCredential) => {
+    if (testLoading) return;
+    if (models.length === 0) {
+      Modal.error({ title: '无可用模型', content: '没有模型，无法测试' });
+      return;
+    }
+    if (models.length === 1) {
+      runTest(cred, models[0].id);
+      return;
+    }
+    setTestCred(cred);
+    setTestModelId(models[0].id);
+    setTestOpen(true);
+  };
+
+  const confirmTest = () => {
+    if (testLoading || !testCred) return;
+    runTest(testCred, testModelId);
+  };
+
+  return (
+    <div className="providers-page">
+      <div className="toolbar">
+        <div className="toolbar-title">
+          <button className="back-arrow" onClick={onBack}>←</button>
+          凭证管理 - {providerName}
+        </div>
+        <div className="toolbar-actions">
+          <button className="ant-btn ant-btn-primary" onClick={openCreate}>+ 新增凭证</button>
+        </div>
+      </div>
+      <div className="providers-table-wrap">
+        <table className="providers-table">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>Key</th>
+              <th>账号</th>
+              <th>优先级</th>
+              <th>启用</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {credentials.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="providers-empty">暂无凭证</td>
+              </tr>
+            ) : (
+              credentials.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.name || `#${c.id}`}</td>
+                  <td className="mono">{maskApiKey(c.api_key)}</td>
+                  <td>{c.account || '-'}</td>
+                  <td>{c.priority}</td>
+                  <td>
+                    <Toggle checked={c.is_active} onChange={() => toggleActive(c)} />
+                  </td>
+                  <td>
+                    <button className="ant-btn ant-btn-sm" style={{ marginRight: 8 }} disabled={testLoading} onClick={() => openTest(c)}>测试</button>
+                    <button className="ant-btn ant-btn-sm" style={{ marginRight: 8 }} onClick={() => openEdit(c)}>编辑</button>
+                    <button className="ant-btn ant-btn-sm ant-btn-dangerous" onClick={() => handleDelete(c)}>删除</button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Drawer
+        open={drawerOpen}
+        title={editingCred ? '编辑凭证' : '新增凭证'}
+        onClose={closeDrawer}
+        onSave={handleSave}
+      >
+        <div className="form-field">
+          <label>名称（可选）</label>
+          <input className="ant-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="给这组凭证起个名字" />
+        </div>
+        <div className="form-field">
+          <label>API Key</label>
+          <input className="ant-input" value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} />
+        </div>
+        <div className="form-field">
+          <label>账号（可选）</label>
+          <input className="ant-input" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })} />
+        </div>
+        <div className="form-field">
+          <label>密码（可选）</label>
+          <input className="ant-input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+        </div>
+        <div className="form-row">
+          <div className="form-field">
+            <label>优先级</label>
+            <input type="number" className="ant-input" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} />
+          </div>
+          <div className="form-field">
+            <label>状态</label>
+            <div className="toggle-wrap"><Toggle checked={form.is_active} onChange={(checked) => setForm({ ...form, is_active: checked })} /></div>
+          </div>
+        </div>
+      </Drawer>
+
+      {testOpen && (
+        <div className="modal-overlay" onClick={() => !testLoading && setTestOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span>选择测试模型 — {testCred?.name || `#${testCred?.id}`}</span>
+              <span className="modal-close" onClick={() => !testLoading && setTestOpen(false)}>&times;</span>
+            </div>
+            <div className="modal-list">
+              {models.map((m: any) => (
+                <label
+                  key={m.id}
+                  className={`test-model-row${testModelId === m.id ? ' selected' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="test-model"
+                    value={m.id}
+                    checked={testModelId === m.id}
+                    onChange={() => setTestModelId(m.id)}
+                    disabled={testLoading}
+                  />
+                  <span className="test-model-name">{m.name}</span>
+                  <span className="test-model-id">{m.id}</span>
+                </label>
+              ))}
+            </div>
+            <div className="modal-footer">
+              <button className="ant-btn" onClick={() => setTestOpen(false)} disabled={testLoading}>取消</button>
+              <button className="ant-btn ant-btn-primary" onClick={confirmTest} disabled={testLoading}>
+                {testLoading ? '测试中...' : '确认测试'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Providers() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<any[]>([]);
@@ -30,24 +313,9 @@ function Providers() {
   const [importSearch, setImportSearch] = useState('');
   const [importing, setImporting] = useState(false);
 
-  const [credOpen, setCredOpen] = useState(false);
-  const [credProvider, setCredProvider] = useState<Provider | null>(null);
-  const [credentials, setCredentials] = useState<ProviderCredential[]>([]);
-  const [credEditing, setCredEditing] = useState<ProviderCredential | null>(null);
-  const [credFormOpen, setCredFormOpen] = useState(false);
-  const [credForm, setCredForm] = useState({
-    name: '',
-    api_key: '',
-    account: '',
-    password: '',
-    priority: 0,
-    is_active: true,
-  });
-
-  const [testOpen, setTestOpen] = useState(false);
-  const [testCred, setTestCred] = useState<ProviderCredential | null>(null);
-  const [testModelId, setTestModelId] = useState('');
-  const [testLoading, setTestLoading] = useState(false);
+  const [view, setView] = useState<'list' | 'credentials'>('list');
+  const [credProviderId, setCredProviderId] = useState(0);
+  const [credProviderName, setCredProviderName] = useState('');
 
   const filteredProviders = useMemo(() => {
     if (!searchQuery) return providers;
@@ -122,146 +390,10 @@ function Providers() {
     });
   };
 
-  const openCredentials = (provider: Provider) => {
-    setCredProvider(provider);
-    setCredOpen(true);
-    setCredFormOpen(false);
-    invoke<ProviderCredential[]>('fetch_provider_credentials', { serverUrl, providerId: provider.id })
-      .then(setCredentials)
-      .catch(() => setCredentials([]));
-  };
-
-  const closeCredentials = () => {
-    setCredOpen(false);
-    setCredProvider(null);
-    setCredentials([]);
-    setCredFormOpen(false);
-  };
-
-  const openCredCreate = () => {
-    setCredEditing(null);
-    setCredForm({ name: '', api_key: '', account: '', password: '', priority: 0, is_active: true });
-    setCredFormOpen(true);
-  };
-
-  const openCredEdit = (cred: ProviderCredential) => {
-    setCredEditing(cred);
-    setCredForm({
-      name: cred.name,
-      api_key: cred.api_key,
-      account: cred.account ?? '',
-      password: cred.password ?? '',
-      priority: cred.priority,
-      is_active: cred.is_active,
-    });
-    setCredFormOpen(true);
-  };
-
-  const handleCredSave = async () => {
-    if (!credProvider) return;
-    const payload = {
-      provider_id: credProvider.id,
-      name: credForm.name || undefined,
-      api_key: credForm.api_key,
-      account: credForm.account || null,
-      password: credForm.password || null,
-      priority: credForm.priority,
-      is_active: credForm.is_active,
-    };
-    try {
-      if (credEditing) {
-        await invoke('update_provider_credential', { serverUrl, id: credEditing.id, data: payload });
-      } else {
-        await invoke('create_provider_credential', { serverUrl, data: payload });
-      }
-      const list = await invoke<ProviderCredential[]>('fetch_provider_credentials', { serverUrl, providerId: credProvider.id });
-      setCredentials(list);
-      setCredFormOpen(false);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleCredDelete = (cred: ProviderCredential) => {
-    Modal.confirm({
-      title: '确定删除？',
-      content: `将删除凭证「${cred.name || cred.id}」`,
-      okText: '确定',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        await invoke('delete_provider_credential', { serverUrl, id: cred.id });
-        if (credProvider) {
-          const list = await invoke<ProviderCredential[]>('fetch_provider_credentials', { serverUrl, providerId: credProvider.id });
-          setCredentials(list);
-        }
-      },
-    });
-  };
-
-  const toggleCredActive = async (cred: ProviderCredential) => {
-    const newActive = !cred.is_active;
-    setCredentials(prev => prev.map(c => c.id === cred.id ? { ...c, is_active: newActive } : c));
-    try {
-      await invoke('update_provider_credential', {
-        serverUrl,
-        id: cred.id,
-        data: { ...cred, is_active: newActive, account: cred.account || null, password: cred.password || null },
-      });
-    } catch (e) {
-      setCredentials(prev => prev.map(c => c.id === cred.id ? { ...c, is_active: !newActive } : c));
-    }
-  };
-
-  const runTest = async (cred: ProviderCredential, modelId: string) => {
-    setTestLoading(true);
-    try {
-      const result = await invoke<TestCredentialResult>('test_provider_credential', {
-        serverUrl,
-        credentialId: cred.id,
-        modelId: modelId,
-        prompt: '你好',
-      });
-      if (result.success) {
-        Modal.info({
-          title: '测试成功',
-          content: `模型 ${result.model_id} 响应时间 ${result.response_time_ms}ms`,
-        });
-      } else {
-        Modal.error({
-          title: '测试失败',
-          content: result.error || '未知错误',
-        });
-      }
-    } catch (e: any) {
-      Modal.error({ title: '测试失败', content: String(e) });
-    } finally {
-      setTestLoading(false);
-      setTestOpen(false);
-      setTestCred(null);
-    }
-  };
-
-  const openTest = (cred: ProviderCredential) => {
-    if (testLoading) return;
-    if (!credProvider) return;
-    if (models.length === 0) {
-      Modal.error({ title: '无可用模型', content: '没有模型，无法测试' });
-      return;
-    }
-    if (models.length === 1) {
-      runTest(cred, models[0].id);
-      return;
-    }
-    setTestCred(cred);
-    setTestModelId(models[0].id);
-    setTestOpen(true);
-  };
-
-  const confirmTest = () => {
-    if (testLoading) return;
-    if (!testCred) return;
-    runTest(testCred, testModelId);
+  const openCredentialsPage = (provider: Provider) => {
+    setCredProviderId(provider.id);
+    setCredProviderName(provider.name);
+    setView('credentials');
   };
 
   const openImport = (provider: Provider) => {
@@ -312,6 +444,18 @@ function Providers() {
     }
   };
 
+  if (view === 'credentials') {
+    return (
+      <CredentialsPage
+        providerId={credProviderId}
+        providerName={credProviderName}
+        serverUrl={serverUrl}
+        models={models}
+        onBack={() => setView('list')}
+      />
+    );
+  }
+
   return (
     <div className="providers-page">
       <Toolbar title="供应商" showSearch={true} searchValue={searchQuery} onSearchChange={setSearchQuery}>
@@ -338,7 +482,7 @@ function Providers() {
                   <td>{p.base_url}</td>
                   <td>
                     <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openEdit(p); }}>编辑</button>
-                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openCredentials(p); }}>凭证</button>
+                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openCredentialsPage(p); }}>凭证</button>
                     <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openImport(p); }}>一键添加模型</button>
                     <button className="ant-btn ant-btn-dangerous" onClick={(e) => { e.stopPropagation(); handleDeleteRow(p); }}>删除</button>
                   </td>
@@ -464,116 +608,6 @@ function Providers() {
                 disabled={importing || Object.keys(importModelDetails).length === 0}
               >
                 {importing ? '导入中...' : '确认导入'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {credOpen && (
-        <div className="modal-overlay" onClick={closeCredentials}>
-          <div className="modal-content cred-modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span>凭证管理 — {credProvider?.name}</span>
-              <span className="modal-close" onClick={closeCredentials}>&times;</span>
-            </div>
-            {!credFormOpen ? (
-              <>
-                <div className="modal-search" style={{ justifyContent: 'space-between', display: 'flex' }}>
-                  <span style={{ color: '#666', fontSize: 14 }}>共 {credentials.length} 条凭证</span>
-                  <button className="ant-btn ant-btn-primary" onClick={openCredCreate}>+ 新增凭证</button>
-                </div>
-                <div className="modal-list">
-                  {credentials.length === 0 ? (
-                    <div className="modal-empty">暂无凭证</div>
-                  ) : (
-                    credentials.map((c) => (
-                      <div key={c.id} className="cred-row">
-                        <div className="cred-info">
-                          <span className="cred-name">{c.name || `#${c.id}`}</span>
-                          <span className="cred-key mono">{maskApiKey(c.api_key)}</span>
-                          {c.account && <span className="cred-account">{c.account}</span>}
-                          <span className="cred-priority">优先级: {c.priority}</span>
-                        </div>
-                        <div className="cred-actions">
-                          <Toggle checked={c.is_active} onChange={() => toggleCredActive(c)} />
-                          <button className="ant-btn ant-btn-sm" disabled={testLoading} onClick={() => openTest(c)}>测试</button>
-                          <button className="ant-btn ant-btn-sm" onClick={() => openCredEdit(c)}>编辑</button>
-                          <button className="ant-btn ant-btn-sm ant-btn-dangerous" onClick={() => handleCredDelete(c)}>删除</button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="cred-form">
-                <div className="form-field">
-                  <label>名称（可选）</label>
-                  <input className="ant-input" value={credForm.name} onChange={(e) => setCredForm({ ...credForm, name: e.target.value })} placeholder="给这组凭证起个名字" />
-                </div>
-                <div className="form-field">
-                  <label>API Key</label>
-                  <input className="ant-input" value={credForm.api_key} onChange={(e) => setCredForm({ ...credForm, api_key: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>账号（可选）</label>
-                  <input className="ant-input" value={credForm.account} onChange={(e) => setCredForm({ ...credForm, account: e.target.value })} />
-                </div>
-                <div className="form-field">
-                  <label>密码（可选）</label>
-                  <input className="ant-input" type="password" value={credForm.password} onChange={(e) => setCredForm({ ...credForm, password: e.target.value })} />
-                </div>
-                <div className="form-row">
-                  <div className="form-field">
-                    <label>优先级</label>
-                    <input type="number" className="ant-input" value={credForm.priority} onChange={(e) => setCredForm({ ...credForm, priority: Number(e.target.value) })} />
-                  </div>
-                  <div className="form-field">
-                    <label>状态</label>
-                    <div className="toggle-wrap"><Toggle checked={credForm.is_active} onChange={(checked) => setCredForm({ ...credForm, is_active: checked })} /></div>
-                  </div>
-                </div>
-                <div className="cred-form-footer">
-                  <button className="ant-btn" onClick={() => setCredFormOpen(false)}>取消</button>
-                  <button className="ant-btn ant-btn-primary" onClick={handleCredSave}>保存</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {testOpen && (
-        <div className="modal-overlay" onClick={() => !testLoading && setTestOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span>选择测试模型 — {testCred?.name || `#${testCred?.id}`}</span>
-              <span className="modal-close" onClick={() => !testLoading && setTestOpen(false)}>&times;</span>
-            </div>
-            <div className="modal-list">
-              {models.map((m: any) => (
-                <label
-                  key={m.id}
-                  className={`test-model-row${testModelId === m.id ? ' selected' : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name="test-model"
-                    value={m.id}
-                    checked={testModelId === m.id}
-                    onChange={() => setTestModelId(m.id)}
-                    disabled={testLoading}
-                  />
-                  <span className="test-model-name">{m.name}</span>
-                  <span className="test-model-id">{m.id}</span>
-                </label>
-              ))}
-            </div>
-            <div className="modal-footer">
-              <button className="ant-btn" onClick={() => setTestOpen(false)} disabled={testLoading}>取消</button>
-              <button className="ant-btn ant-btn-primary" onClick={confirmTest} disabled={testLoading}>
-                {testLoading ? '测试中...' : '确认测试'}
               </button>
             </div>
           </div>

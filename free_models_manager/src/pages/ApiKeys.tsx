@@ -88,8 +88,18 @@ function ApiKeys() {
         name: formName,
         is_active: formIsActive,
       };
-      await invoke<ApiKey>('create_api_key', { serverUrl, data: payload });
+      const result = await invoke<ApiKey>('create_api_key', { serverUrl, data: payload });
       setDrawerOpen(false);
+      Modal.info({
+        title: 'API Key 创建成功',
+        content: (
+          <div>
+            <p>请立即复制保存此 Key，关闭后将不再显示：</p>
+            <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: 4, fontFamily: 'monospace', wordBreak: 'break-all', userSelect: 'all' }}>{result.key_value}</div>
+          </div>
+        ),
+        okText: '已复制保存',
+      });
       loadApiKeys();
     }
   };
@@ -117,7 +127,7 @@ function ApiKeys() {
       await invoke<ApiKey>('update_api_key', {
         serverUrl,
         id: key.id,
-        data: { ...key, is_active: checked },
+        data: { is_active: checked },
       });
     } catch (e) {
       console.error(e);
@@ -147,7 +157,7 @@ function ApiKeys() {
             <tr>
               <th>名称</th>
               <th>Key</th>
-              <th>状态</th>
+              <th>启用</th>
               <th>创建时间</th>
               <th>操作</th>
             </tr>

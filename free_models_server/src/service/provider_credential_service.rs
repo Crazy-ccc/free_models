@@ -61,9 +61,9 @@ pub async fn create(
 pub async fn update(
     db: &DatabaseConnection,
     id: i32,
-    provider_id: i32,
+    provider_id: Option<i32>,
     name: &str,
-    api_key: &str,
+    new_api_key: Option<&str>,
     account: Option<&str>,
     password: Option<&str>,
     priority: i32,
@@ -75,8 +75,6 @@ pub async fn update(
         Some(m) => m,
         None => return Err(sea_orm::DbErr::RecordNotFound("Credential not found".into())),
     };
-    let encrypted_api_key = encryption::encrypt(api_key, encryption_key)
-        .map_err(sea_orm::DbErr::Custom)?;
     let encrypted_password = match password {
         Some(p) => Some(
             encryption::encrypt(p, encryption_key).map_err(sea_orm::DbErr::Custom)?,
@@ -85,9 +83,15 @@ pub async fn update(
     };
     let now = chrono::Utc::now().naive_utc();
     let mut active_model: provider_credential::ActiveModel = model.into();
-    active_model.provider_id = Set(provider_id);
+    if let Some(v) = provider_id {
+        active_model.provider_id = Set(v);
+    }
     active_model.name = Set(name.to_string());
-    active_model.api_key = Set(encrypted_api_key);
+    if let Some(key) = new_api_key {
+        let encrypted = encryption::encrypt(key, encryption_key)
+            .map_err(sea_orm::DbErr::Custom)?;
+        active_model.api_key = Set(encrypted);
+    }
     active_model.account = Set(account.map(|s| s.to_string()));
     active_model.encrypted_password = Set(encrypted_password);
     active_model.priority = Set(priority);

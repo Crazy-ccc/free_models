@@ -46,9 +46,9 @@ pub async fn create(
 pub async fn update(
     db: &DatabaseConnection,
     id: i32,
-    key_value: &str,
-    name: &str,
-    is_active: bool,
+    key_value: Option<&str>,
+    name: Option<&str>,
+    is_active: Option<bool>,
 ) -> Result<api_key::Model, sea_orm::DbErr> {
     let model = api_key::Entity::find_by_id(id).one(db).await?;
     let model = match model {
@@ -57,9 +57,15 @@ pub async fn update(
     };
     let now = chrono::Utc::now().naive_utc();
     let mut active_model: api_key::ActiveModel = model.into();
-    active_model.key_value = Set(key_value.to_string());
-    active_model.name = Set(name.to_string());
-    active_model.is_active = Set(is_active);
+    if let Some(kv) = key_value {
+        active_model.key_value = Set(kv.to_string());
+    }
+    if let Some(n) = name {
+        active_model.name = Set(n.to_string());
+    }
+    if let Some(active) = is_active {
+        active_model.is_active = Set(active);
+    }
     active_model.last_updated = Set(now);
     active_model.update(db).await
 }

@@ -30,13 +30,14 @@ pub struct CreateModelRequest {
     pub context_length: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
+#[serde(default)]
 pub struct UpdateModelRequest {
-    pub name: String,
-    pub timeout: i32,
-    pub priority: i32,
+    pub name: Option<String>,
+    pub timeout: Option<i32>,
+    pub priority: Option<i32>,
     pub is_active: Option<bool>,
-    pub context_length: i32,
+    pub context_length: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -46,11 +47,12 @@ pub struct CreateApiKeyRequest {
     pub is_active: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
+#[serde(default)]
 pub struct UpdateApiKeyRequest {
-    pub key_value: String,
-    pub name: String,
-    pub is_active: bool,
+    pub key_value: Option<String>,
+    pub name: Option<String>,
+    pub is_active: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -64,11 +66,12 @@ pub struct CreateProviderCredentialRequest {
     pub is_active: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
+#[serde(default)]
 pub struct UpdateProviderCredentialRequest {
-    pub provider_id: i32,
+    pub provider_id: Option<i32>,
     pub name: Option<String>,
-    pub api_key: String,
+    pub api_key: Option<String>,
     pub account: Option<String>,
     pub password: Option<String>,
     pub priority: Option<i32>,
@@ -396,9 +399,12 @@ pub async fn update_model(
     body: web::Json<UpdateModelRequest>,
 ) -> HttpResponse {
     handle_result!(model_service_ext::update(
-        &state.db, path.into_inner(), &body.name, body.timeout,
-        body.priority, body.context_length,
-        body.is_active.unwrap_or(true),
+        &state.db, path.into_inner(),
+        body.name.as_deref(),
+        body.timeout,
+        body.priority,
+        body.context_length,
+        body.is_active,
     ).await)
 }
 
@@ -432,7 +438,13 @@ pub async fn update_api_key(
     path: web::Path<i32>,
     body: web::Json<UpdateApiKeyRequest>,
 ) -> HttpResponse {
-    let result = api_key_service::update(&state.db, path.into_inner(), &body.key_value, &body.name, body.is_active).await;
+    let result = api_key_service::update(
+        &state.db,
+        path.into_inner(),
+        body.key_value.as_deref(),
+        body.name.as_deref(),
+        body.is_active,
+    ).await;
     if result.is_ok() {
         state.api_key_cache.refresh(&state.db).await;
     }
@@ -511,7 +523,7 @@ pub async fn update_provider_credential(
         path.into_inner(),
         body.provider_id,
         body.name.as_deref().unwrap_or(""),
-        &body.api_key,
+        body.api_key.as_deref(),
         body.account.as_deref(),
         body.password.as_deref(),
         body.priority.unwrap_or(0),
@@ -786,7 +798,8 @@ pub struct CreateProviderModelMapRequest {
     pub context_length: Option<i32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
+#[serde(default)]
 pub struct UpdateProviderModelMapRequest {
     pub provider_model_id: Option<String>,
     pub is_active: Option<bool>,
@@ -952,10 +965,6 @@ pub struct UsageLogStatsQuery {
     pub group_by: String,
     pub start_time: Option<String>,
     pub end_time: Option<String>,
-    pub provider_id: Option<i32>,
-    pub credential_id: Option<i32>,
-    pub model_id: Option<i32>,
-    pub api_key_id: Option<i32>,
 }
 
 pub async fn usage_log_stats(
@@ -967,10 +976,6 @@ pub async fn usage_log_stats(
         &query.group_by,
         query.start_time.as_deref(),
         query.end_time.as_deref(),
-        query.provider_id,
-        query.credential_id,
-        query.model_id,
-        query.api_key_id,
     )
     .await
     {

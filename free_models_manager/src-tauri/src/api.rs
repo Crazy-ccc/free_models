@@ -338,10 +338,6 @@ impl AdminClient {
         group_by: &str,
         start_time: Option<&str>,
         end_time: Option<&str>,
-        provider_id: Option<i32>,
-        credential_id: Option<i32>,
-        model_id: Option<i32>,
-        api_key_id: Option<i32>,
     ) -> Result<Value, String> {
         let mut path = format!("/admin/usage_log/stats?group_by={}", group_by);
         if let Some(v) = start_time {
@@ -349,18 +345,6 @@ impl AdminClient {
         }
         if let Some(v) = end_time {
             path.push_str(&format!("&end_time={}", v));
-        }
-        if let Some(v) = provider_id {
-            path.push_str(&format!("&provider_id={}", v));
-        }
-        if let Some(v) = credential_id {
-            path.push_str(&format!("&credential_id={}", v));
-        }
-        if let Some(v) = model_id {
-            path.push_str(&format!("&model_id={}", v));
-        }
-        if let Some(v) = api_key_id {
-            path.push_str(&format!("&api_key_id={}", v));
         }
         let resp = self.signed_request("GET", &path, None).await?;
         if !resp.status().is_success() {

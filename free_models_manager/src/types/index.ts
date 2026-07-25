@@ -39,6 +39,8 @@ export interface ProviderModelMap {
   priority: number;
   status: string;
   is_active: boolean;
+  context_length?: number;
+  timeout?: number;
   created_time?: string;
   last_updated?: string;
 }

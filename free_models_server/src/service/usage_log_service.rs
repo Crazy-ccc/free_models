@@ -1,5 +1,4 @@
-use log::info;
-use sea_orm::{ConnectionTrait, DatabaseConnection, EntityTrait, Set};
+use sea_orm::{ConnectionTrait, DatabaseConnection, EntityTrait, Set, Statement, Value};
 
 use crate::db::entities::usage_log;
 
@@ -87,65 +86,59 @@ pub async fn create_batch(
 fn build_where_clause(
     start_time: Option<&str>,
     end_time: Option<&str>,
-    provider_id: Option<i32>,
-    credential_id: Option<i32>,
-    model_id: Option<i32>,
-    api_key_id: Option<i32>,
-) -> String {
+) -> Result<(String, Vec<Value>), sea_orm::DbErr> {
     let mut conditions = Vec::new();
+    let mut values = Vec::new();
+
     if let Some(s) = start_time {
-        conditions.push(format!("request_timestamp >= '{}'", s));
+        if chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_err() {
+            return Err(sea_orm::DbErr::Custom(format!("Invalid date format: {}, expected YYYY-MM-DD", s)));
+        }
+        conditions.push("request_timestamp >= ?".to_string());
+        values.push(Value::String(Some(s.to_string())));
     }
     if let Some(e) = end_time {
-        conditions.push(format!("request_timestamp < DATE_ADD('{}', INTERVAL 1 DAY)", e));
+        if chrono::NaiveDate::parse_from_str(e, "%Y-%m-%d").is_err() {
+            return Err(sea_orm::DbErr::Custom(format!("Invalid date format: {}, expected YYYY-MM-DD", e)));
+        }
+        conditions.push("request_timestamp < DATE_ADD(?, INTERVAL 1 DAY)".to_string());
+        values.push(Value::String(Some(e.to_string())));
     }
-    if let Some(p) = provider_id {
-        conditions.push(format!("provider_config_id = {}", p));
-    }
-    if let Some(c) = credential_id {
-        conditions.push(format!("provider_credential_id = {}", c));
-    }
-    if let Some(m) = model_id {
-        conditions.push(format!("model_config_id = {}", m));
-    }
-    if let Some(a) = api_key_id {
-        conditions.push(format!("api_key_id = {}", a));
-    }
-    if conditions.is_empty() {
+    let where_clause = if conditions.is_empty() {
         "1=1".to_string()
     } else {
         conditions.join(" AND ")
-    }
+    };
+    Ok((where_clause, values))
 }
 
 fn build_daily_where_clause(
     start_time: Option<&str>,
     end_time: Option<&str>,
-    provider_id: Option<i32>,
-    model_id: Option<i32>,
-    api_key_id: Option<i32>,
-) -> String {
+) -> Result<(String, Vec<Value>), sea_orm::DbErr> {
     let mut conditions = Vec::new();
+    let mut values = Vec::new();
+
     if let Some(s) = start_time {
-        conditions.push(format!("stat_date >= '{}'", s));
+        if chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_err() {
+            return Err(sea_orm::DbErr::Custom(format!("Invalid date format: {}, expected YYYY-MM-DD", s)));
+        }
+        conditions.push("stat_date >= ?".to_string());
+        values.push(Value::String(Some(s.to_string())));
     }
     if let Some(e) = end_time {
-        conditions.push(format!("stat_date <= '{}'", e));
+        if chrono::NaiveDate::parse_from_str(e, "%Y-%m-%d").is_err() {
+            return Err(sea_orm::DbErr::Custom(format!("Invalid date format: {}, expected YYYY-MM-DD", e)));
+        }
+        conditions.push("stat_date <= ?".to_string());
+        values.push(Value::String(Some(e.to_string())));
     }
-    if let Some(p) = provider_id {
-        conditions.push(format!("provider_config_id = {}", p));
-    }
-    if let Some(m) = model_id {
-        conditions.push(format!("model_config_id = {}", m));
-    }
-    if let Some(a) = api_key_id {
-        conditions.push(format!("api_key_id = {}", a));
-    }
-    if conditions.is_empty() {
+    let where_clause = if conditions.is_empty() {
         "1=1".to_string()
     } else {
         conditions.join(" AND ")
-    }
+    };
+    Ok((where_clause, values))
 }
 
 fn build_agg_select(for_daily: bool) -> &'static str {
@@ -198,7 +191,7 @@ fn build_group_clauses(group_by: &str, for_usage_log: bool) -> Result<(String, S
                      CAST(DATE(request_timestamp) AS CHAR) AS dimension_name"
                         .to_string(),
                     "GROUP BY CAST(DATE(request_timestamp) AS CHAR)".to_string(),
-                    "ORDER BY DATE(request_timestamp)".to_string(),
+                    "ORDER BY CAST(DATE(request_timestamp) AS CHAR)".to_string(),
                 ))
             } else {
                 Ok((
@@ -276,6 +269,7 @@ async fn query_stats_table(
     table_name: &str,
     group_by: &str,
     where_clause: &str,
+    where_values: Vec<Value>,
     for_daily: bool,
 ) -> Result<Vec<UsageLogStatItem>, sea_orm::DbErr> {
     let (group_select, group_by_clause, order_clause) = build_group_clauses(group_by, !for_daily)?;
@@ -284,9 +278,8 @@ async fn query_stats_table(
         "SELECT {}, {} FROM {} WHERE {} {} {}",
         group_select, agg_select, table_name, where_clause, group_by_clause, order_clause
     );
-    info!("query_stats_table {}", sql);
     let backend = db.get_database_backend();
-    let stmt = sea_orm::Statement::from_string(backend, sql);
+    let stmt = Statement::from_sql_and_values(backend, sql, where_values);
     let rows = db.query_all_raw(stmt).await?;
     let mut items = Vec::new();
     for row in &rows {
@@ -300,6 +293,7 @@ async fn query_stats_total_single(
     table_name: &str,
     group_by: &str,
     where_clause: &str,
+    where_values: Vec<Value>,
     for_daily: bool,
 ) -> Result<Option<UsageLogStatItem>, sea_orm::DbErr> {
     let agg_select = build_agg_select(for_daily);
@@ -307,9 +301,8 @@ async fn query_stats_total_single(
         "SELECT CAST(NULL AS CHAR) AS dimension_id, 'total' AS dimension_name, {} FROM {} WHERE {}",
         agg_select, table_name, where_clause
     );
-    info!("query_stats_total_single {}", sql);
     let backend = db.get_database_backend();
-    let stmt = sea_orm::Statement::from_string(backend, sql);
+    let stmt = Statement::from_sql_and_values(backend, sql, where_values);
     match db.query_one_raw(stmt).await? {
         Some(row) => Ok(Some(row_to_stat_item(&row, group_by)?)),
         None => Ok(None),
@@ -344,17 +337,14 @@ pub async fn query_stats(
     group_by: &str,
     start_time: Option<&str>,
     end_time: Option<&str>,
-    provider_id: Option<i32>,
-    credential_id: Option<i32>,
-    model_id: Option<i32>,
-    api_key_id: Option<i32>,
 ) -> Result<UsageLogStatsResponse, sea_orm::DbErr> {
-    let where_clause = build_where_clause(start_time, end_time, provider_id, credential_id, model_id, api_key_id);
+    let (where_clause, where_values) = build_where_clause(start_time, end_time)
+        .map_err(|e| sea_orm::DbErr::Custom(format!("{}", e)))?;
 
     // credential 维度只查 usage_log（daily 表没有 credential 字段）
     if group_by == "credential" {
-        let items = query_stats_table(db, "usage_log", group_by, &where_clause, false).await?;
-        let total = query_stats_total_single(db, "usage_log", group_by, &where_clause, false).await?
+        let items = query_stats_table(db, "usage_log", group_by, &where_clause, where_values.clone(), false).await?;
+        let total = query_stats_total_single(db, "usage_log", group_by, &where_clause, where_values, false).await?
             .ok_or_else(|| sea_orm::DbErr::Custom("No data".to_string()))?;
         return Ok(UsageLogStatsResponse { total, items });
     }
@@ -378,16 +368,17 @@ pub async fn query_stats(
         _ => (true, true),
     };
 
-    let daily_where = build_daily_where_clause(start_time, end_time, provider_id, model_id, api_key_id);
+    let (daily_where, daily_values) = build_daily_where_clause(start_time, end_time)
+        .map_err(|e| sea_orm::DbErr::Custom(format!("{}", e)))?;
 
     // 查询分组数据
     let mut merged: std::collections::BTreeMap<(Option<String>, String), UsageLogStatItem> = std::collections::BTreeMap::new();
     if has_historical {
-        let items = query_stats_table(db, "usage_log_daily", group_by, &daily_where, true).await?;
+        let items = query_stats_table(db, "usage_log_daily", group_by, &daily_where, daily_values.clone(), true).await?;
         merged = merge_stat_items(merged, items);
     }
     if has_today {
-        let items = query_stats_table(db, "usage_log", group_by, &where_clause, false).await?;
+        let items = query_stats_table(db, "usage_log", group_by, &where_clause, where_values.clone(), false).await?;
         merged = merge_stat_items(merged, items);
     }
     let items: Vec<UsageLogStatItem> = merged.into_values().collect();
@@ -396,8 +387,8 @@ pub async fn query_stats(
     let total = match (has_historical, has_today) {
         (true, true) => {
             match (
-                query_stats_total_single(db, "usage_log_daily", group_by, &daily_where, true).await?,
-                query_stats_total_single(db, "usage_log", group_by, &where_clause, false).await?,
+                query_stats_total_single(db, "usage_log_daily", group_by, &daily_where, daily_values, true).await?,
+                query_stats_total_single(db, "usage_log", group_by, &where_clause, where_values, false).await?,
             ) {
                 (Some(a), Some(b)) => merge_two_totals(a, b),
                 (Some(a), None) => a,
@@ -408,11 +399,11 @@ pub async fn query_stats(
             }
         }
         (true, false) => {
-            query_stats_total_single(db, "usage_log_daily", group_by, &daily_where, true).await?
+            query_stats_total_single(db, "usage_log_daily", group_by, &daily_where, daily_values, true).await?
                 .ok_or_else(|| sea_orm::DbErr::Custom("No data".to_string()))?
         }
         (false, true) => {
-            query_stats_total_single(db, "usage_log", group_by, &where_clause, false).await?
+            query_stats_total_single(db, "usage_log", group_by, &where_clause, where_values, false).await?
                 .ok_or_else(|| sea_orm::DbErr::Custom("No data".to_string()))?
         }
         (false, false) => {
@@ -431,10 +422,8 @@ pub async fn archive_yesterday(db: &DatabaseConnection) -> Result<u64, sea_orm::
     let backend = db.get_database_backend();
 
     // 先检查是否已有数据，避免重复归档
-    let check_sql = format!(
-        "SELECT COUNT(*) as cnt FROM usage_log_daily WHERE stat_date = '{}'", yesterday
-    );
-    let check_stmt = sea_orm::Statement::from_string(backend.clone(), check_sql);
+    let check_sql = "SELECT COUNT(*) as cnt FROM usage_log_daily WHERE stat_date = ?";
+    let check_stmt = Statement::from_sql_and_values(backend.clone(), check_sql, vec![yesterday.clone().into()]);
     let check_row = db.query_one_raw(check_stmt).await?;
     let already_archived: bool = match check_row {
         Some(row) => row.try_get_by_index::<i64>(0).unwrap_or(0) > 0,
@@ -443,46 +432,42 @@ pub async fn archive_yesterday(db: &DatabaseConnection) -> Result<u64, sea_orm::
 
     if already_archived {
         // 已归档过，删除昨日原始数据（避免重跑时重复插入）
-        let delete_sql = format!("DELETE FROM usage_log WHERE DATE(request_timestamp) = '{}'", yesterday);
-        let delete_stmt = sea_orm::Statement::from_string(backend, delete_sql);
+        let delete_sql = "DELETE FROM usage_log WHERE DATE(request_timestamp) = ?";
+        let delete_stmt = Statement::from_sql_and_values(backend, delete_sql, vec![yesterday.clone().into()]);
         let result = db.execute_raw(delete_stmt).await?;
         return Ok(result.rows_affected());
     }
 
     // 聚合插入
-    let insert_sql = format!(
-        "INSERT INTO usage_log_daily \
-         (stat_date, api_key_id, api_key_name, provider_config_id, provider_name, \
-          model_config_id, model_name, requests, prompt_tokens, completion_tokens, \
-          total_tokens, cache_hit_tokens, cache_miss_tokens, avg_duration_ms, min_duration_ms, max_duration_ms) \
-         SELECT \
-          DATE(request_timestamp) AS stat_date, \
-          api_key_id, api_key_name, \
-          provider_config_id, provider_name, \
-          model_config_id, model_name, \
-          COUNT(*) AS requests, \
-          SUM(prompt_tokens) AS prompt_tokens, \
-          SUM(completion_tokens) AS completion_tokens, \
-          SUM(total_tokens) AS total_tokens, \
-          SUM(cache_hit_tokens) AS cache_hit_tokens, \
-          SUM(cache_miss_tokens) AS cache_miss_tokens, \
-          ROUND(AVG(duration_ms)) AS avg_duration_ms, \
-          MIN(duration_ms) AS min_duration_ms, \
-          MAX(duration_ms) AS max_duration_ms \
-         FROM usage_log \
-         WHERE DATE(request_timestamp) = '{}' \
-         GROUP BY stat_date, api_key_id, api_key_name, provider_config_id, provider_name, \
-                  model_config_id, model_name",
-        yesterday
-    );
-    let insert_stmt = sea_orm::Statement::from_string(backend.clone(), insert_sql);
+    let insert_sql = "\
+        INSERT INTO usage_log_daily \
+        (stat_date, api_key_id, api_key_name, provider_config_id, provider_name, \
+         model_config_id, model_name, requests, prompt_tokens, completion_tokens, \
+         total_tokens, cache_hit_tokens, cache_miss_tokens, avg_duration_ms, min_duration_ms, max_duration_ms) \
+        SELECT \
+         DATE(request_timestamp) AS stat_date, \
+         api_key_id, api_key_name, \
+         provider_config_id, provider_name, \
+         model_config_id, model_name, \
+         COUNT(*) AS requests, \
+         SUM(prompt_tokens) AS prompt_tokens, \
+         SUM(completion_tokens) AS completion_tokens, \
+         SUM(total_tokens) AS total_tokens, \
+         SUM(cache_hit_tokens) AS cache_hit_tokens, \
+         SUM(cache_miss_tokens) AS cache_miss_tokens, \
+         ROUND(AVG(duration_ms)) AS avg_duration_ms, \
+         MIN(duration_ms) AS min_duration_ms, \
+         MAX(duration_ms) AS max_duration_ms \
+        FROM usage_log \
+        WHERE DATE(request_timestamp) = ? \
+        GROUP BY stat_date, api_key_id, api_key_name, provider_config_id, provider_name, \
+                 model_config_id, model_name";
+    let insert_stmt = Statement::from_sql_and_values(backend.clone(), insert_sql, vec![yesterday.clone().into()]);
     let _ = db.execute_raw(insert_stmt).await?;
 
     // 删除已归档的原始数据
-    let delete_sql = format!(
-        "DELETE FROM usage_log WHERE DATE(request_timestamp) = '{}'", yesterday
-    );
-    let delete_stmt = sea_orm::Statement::from_string(backend, delete_sql);
+    let delete_sql = "DELETE FROM usage_log WHERE DATE(request_timestamp) = ?";
+    let delete_stmt = Statement::from_sql_and_values(backend, delete_sql, vec![yesterday.into()]);
     let result = db.execute_raw(delete_stmt).await?;
     Ok(result.rows_affected())
 }

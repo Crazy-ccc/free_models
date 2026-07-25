@@ -23,7 +23,7 @@ const EMPTY_FORM: FormState = {
   is_active: true,
 };
 
-/* ───── 供应商映射弹窗 ───── */
+/* ───── 供应商映射子页面 ───── */
 
 const PROTOCOL_OPTIONS = ['openai', 'anthropic'];
 const STATUS_OPTIONS = [
@@ -32,49 +32,96 @@ const STATUS_OPTIONS = [
   { value: 'deprecated', label: '废弃' },
 ];
 
-interface MappingModalProps {
-  visible: boolean;
-  modelId: number;
-  modelName: string;
-  onClose: () => void;
-  serverUrl: string;
-  providers: Provider[];
+interface MappingFormState {
+  provider_id: number;
+  provider_model_id: string;
+  protocols: string;
+  priority: number;
+  status: string;
+  context_length: number;
+  is_active: boolean;
 }
 
-function ProviderMappingModal({ visible, modelId, modelName, onClose, serverUrl, providers }: MappingModalProps) {
+interface ModelMappingsPageProps {
+  modelId: number;
+  modelName: string;
+  serverUrl: string;
+  providers: Provider[];
+  onBack: () => void;
+}
+
+function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }: ModelMappingsPageProps) {
   const [maps, setMaps] = useState<ProviderModelMap[]>([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTitle, setDrawerTitle] = useState('编辑供应商映射');
+  const [editingItem, setEditingItem] = useState<ProviderModelMap | null>(null);
+  const [form, setForm] = useState<MappingFormState>({
+    provider_id: 0,
+    provider_model_id: '',
+    protocols: '',
+    priority: 0,
+    status: 'available',
+    context_length: 256000,
+    is_active: true,
+  });
 
   const loadMaps = () => {
     invoke<ProviderModelMap[]>('fetch_provider_model_maps', { serverUrl, modelId }).then(setMaps);
   };
 
   useEffect(() => {
-    if (visible) {
-      loadMaps();
-    }
-  }, [visible, modelId]);
+    loadMaps();
+  }, [modelId]);
 
-  const handleFieldChange = (index: number, field: string, value: any) => {
-    setMaps((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
-      return next;
+  const openEdit = (item: ProviderModelMap) => {
+    setEditingItem(item);
+    setForm({
+      provider_id: item.provider_id,
+      provider_model_id: item.provider_model_id,
+      protocols: item.protocols,
+      priority: item.priority,
+      status: item.status,
+      context_length: item.context_length ?? 256000,
+      is_active: item.is_active,
     });
+    setDrawerTitle('编辑供应商映射');
+    setDrawerOpen(true);
   };
 
-  const handleSave = async (item: ProviderModelMap) => {
+  const openCreate = () => {
+    setEditingItem(null);
+    setForm({
+      provider_id: providers[0]?.id ?? 0,
+      provider_model_id: '',
+      protocols: 'openai',
+      priority: 0,
+      status: 'available',
+      context_length: 256000,
+      is_active: true,
+    });
+    setDrawerTitle('新建供应商映射');
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setEditingItem(null);
+  };
+
+  const handleSave = async () => {
     try {
-      if (item.id > 0) {
+      if (editingItem) {
         await invoke<ProviderModelMap>('update_provider_model_map', {
           serverUrl,
-          id: item.id,
+          id: editingItem.id,
           data: {
-            provider_id: item.provider_id,
-            provider_model_id: item.provider_model_id,
-            protocols: item.protocols,
-            priority: item.priority,
-            status: item.status,
-            is_active: item.is_active,
+            provider_id: form.provider_id,
+            provider_model_id: form.provider_model_id,
+            protocols: form.protocols,
+            priority: form.priority,
+            status: form.status,
+            context_length: form.context_length,
+            is_active: form.is_active,
           },
         });
       } else {
@@ -82,22 +129,24 @@ function ProviderMappingModal({ visible, modelId, modelName, onClose, serverUrl,
           serverUrl,
           data: {
             model_id: modelId,
-            provider_id: item.provider_id,
-            provider_model_id: item.provider_model_id,
-            protocols: item.protocols,
-            priority: item.priority,
-            status: item.status,
-            is_active: item.is_active,
+            provider_id: form.provider_id,
+            provider_model_id: form.provider_model_id,
+            protocols: form.protocols,
+            priority: form.priority,
+            status: form.status,
+            context_length: form.context_length,
+            is_active: form.is_active,
           },
         });
       }
+      closeDrawer();
       loadMaps();
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = (id: number) => {
     Modal.confirm({
       title: '确定删除？',
       content: '将删除该供应商映射',
@@ -111,38 +160,47 @@ function ProviderMappingModal({ visible, modelId, modelName, onClose, serverUrl,
     });
   };
 
-  const handleAdd = () => {
-    setMaps((prev) => [
-      ...prev,
-      {
-        id: 0,
-        model_id: modelId,
-        provider_id: providers[0]?.id ?? 0,
-        provider_model_id: '',
-        protocols: '',
-        priority: 0,
-        status: 'available',
-        is_active: true,
-      },
-    ]);
+  const handleToggleMappingActive = async (item: ProviderModelMap, checked: boolean) => {
+    const prevState = item.is_active;
+    setMaps((prev) =>
+      prev.map((m) => (m.id === item.id ? { ...m, is_active: checked } : m))
+    );
+    try {
+      await invoke<ProviderModelMap>('update_provider_model_map', {
+        serverUrl,
+        id: item.id,
+        data: { is_active: checked },
+      });
+    } catch (e) {
+      console.error(e);
+      setMaps((prev) =>
+        prev.map((m) => (m.id === item.id ? { ...m, is_active: prevState } : m))
+      );
+    } finally {
+      loadMaps();
+    }
   };
 
   return (
-    <Modal
-      title={`供应商映射 - ${modelName}`}
-      open={visible}
-      onCancel={onClose}
-      footer={null}
-      width={900}
-    >
-      <div className="mapping-table-wrap">
-        <table className="models-table mapping-table">
+    <div className="models-page">
+      <div className="toolbar">
+        <div className="toolbar-title">
+          <button className="back-arrow" onClick={onBack}>←</button>
+          供应商映射 - {modelName}
+        </div>
+        <div className="toolbar-actions">
+          <button className="ant-btn ant-btn-primary" onClick={openCreate}>+ 新建映射</button>
+        </div>
+      </div>
+      <div className="models-table-wrap">
+        <table className="models-table">
           <thead>
             <tr>
               <th>供应商</th>
-              <th style={{ minWidth: 140 }}>供应商 Model ID *</th>
+              <th style={{ minWidth: 140 }}>Provider Model ID</th>
               <th>协议</th>
               <th>优先级</th>
+              <th>上下文长度</th>
               <th>状态</th>
               <th>启用</th>
               <th>操作</th>
@@ -151,87 +209,27 @@ function ProviderMappingModal({ visible, modelId, modelName, onClose, serverUrl,
           <tbody>
             {maps.length === 0 ? (
               <tr>
-                <td colSpan={7} className="models-empty">暂无映射</td>
+                <td colSpan={8} className="models-empty">暂无映射</td>
               </tr>
             ) : (
-              maps.map((item, idx) => (
-                <tr key={item.id || `new-${idx}`}>
+              maps.map((item) => (
+                <tr key={item.id}>
+                  <td>{providers.find((p) => p.id === item.provider_id)?.name ?? item.provider_id}</td>
+                  <td>{item.provider_model_id}</td>
+                  <td>{item.protocols || '-'}</td>
+                  <td>{item.priority}</td>
+                  <td>{item.context_length?.toLocaleString() ?? '-'}</td>
                   <td>
-                    <select
-                      className="form-select ant-input"
-                      value={item.provider_id}
-                      onChange={(e) => handleFieldChange(idx, 'provider_id', Number(e.target.value))}
-                      style={{ width: 120 }}
-                    >
-                      {providers.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
+                    <span className={`status-tag ${item.status}`}>
+                      {STATUS_OPTIONS.find((o) => o.value === item.status)?.label ?? item.status}
+                    </span>
                   </td>
                   <td>
-                    <input
-                      className="ant-input"
-                      value={item.provider_model_id}
-                      onChange={(e) => handleFieldChange(idx, 'provider_model_id', e.target.value)}
-                      placeholder="必填"
-                      style={{ width: '100%' }}
-                    />
+                    <Toggle checked={item.is_active} onChange={(checked) => handleToggleMappingActive(item, checked)} />
                   </td>
                   <td>
-                    <select
-                      className="form-select ant-input"
-                      value={item.protocols}
-                      onChange={(e) => handleFieldChange(idx, 'protocols', e.target.value)}
-                      style={{ width: 120 }}
-                    >
-                      <option value="">不限</option>
-                      {PROTOCOL_OPTIONS.map((p) => (
-                        <option key={p} value={p}>{p}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      className="ant-input"
-                      value={item.priority}
-                      onChange={(e) => handleFieldChange(idx, 'priority', Number(e.target.value))}
-                      style={{ width: 70 }}
-                    />
-                  </td>
-                  <td>
-                    <select
-                      className="form-select ant-input"
-                      value={item.status}
-                      onChange={(e) => handleFieldChange(idx, 'status', e.target.value)}
-                      style={{ width: 100 }}
-                    >
-                      {STATUS_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <Toggle
-                      checked={item.is_active}
-                      onChange={(checked) => handleFieldChange(idx, 'is_active', checked)}
-                    />
-                  </td>
-                  <td>
-                    <button
-                      className="ant-btn"
-                      style={{ marginRight: 6 }}
-                      onClick={() => handleSave(item)}
-                      disabled={!item.provider_model_id.trim()}
-                    >
-                      保存
-                    </button>
-                    <button
-                      className="ant-btn ant-btn-dangerous"
-                      onClick={() => handleDelete(item.id)}
-                    >
-                      删除
-                    </button>
+                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={() => openEdit(item)}>编辑</button>
+                    <button className="ant-btn ant-btn-dangerous" onClick={() => handleDelete(item.id)}>删除</button>
                   </td>
                 </tr>
               ))
@@ -239,10 +237,91 @@ function ProviderMappingModal({ visible, modelId, modelName, onClose, serverUrl,
           </tbody>
         </table>
       </div>
-      <div style={{ marginTop: 12, textAlign: 'right' }}>
-        <button className="ant-btn ant-btn-primary" onClick={handleAdd}>+ 添加映射</button>
-      </div>
-    </Modal>
+
+      <Drawer
+        open={drawerOpen}
+        title={drawerTitle}
+        onClose={closeDrawer}
+        onSave={handleSave}
+      >
+        <div className="form-field">
+          <label className="form-label">供应商</label>
+          <select
+            className="form-select ant-input"
+            value={form.provider_id}
+            onChange={(e) => setForm({ ...form, provider_id: Number(e.target.value) })}
+          >
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="form-field">
+          <label className="form-label">Provider Model ID</label>
+          <input
+            className="form-input ant-input"
+            value={form.provider_model_id}
+            onChange={(e) => setForm({ ...form, provider_model_id: e.target.value })}
+          />
+        </div>
+        <div className="form-field">
+          <label className="form-label">协议</label>
+          <select
+            className="form-select ant-input"
+            value={form.protocols}
+            onChange={(e) => setForm({ ...form, protocols: e.target.value })}
+          >
+            <option value="">不限</option>
+            {PROTOCOL_OPTIONS.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
+        <div className="form-row">
+          <div className="form-field">
+            <label className="form-label">优先级</label>
+            <input
+              type="number"
+              className="form-number ant-input"
+              value={form.priority}
+              onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}
+            />
+          </div>
+          <div className="form-field">
+            <label className="form-label">状态</label>
+            <select
+              className="form-select ant-input"
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value })}
+            >
+              {STATUS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-field">
+            <label className="form-label">上下文长度</label>
+            <input
+              type="number"
+              className="form-number ant-input"
+              value={form.context_length}
+              onChange={(e) => setForm({ ...form, context_length: Number(e.target.value) })}
+            />
+          </div>
+          <div className="form-field">
+            <label className="form-label">启用</label>
+            <div className="toggle-wrap">
+              <Toggle
+                checked={form.is_active}
+                onChange={(checked) => setForm({ ...form, is_active: checked })}
+              />
+            </div>
+          </div>
+        </div>
+      </Drawer>
+    </div>
   );
 }
 
@@ -256,7 +335,9 @@ function Models() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [searchQuery, setSearchQuery] = useState('');
   const [prioritySort, setPrioritySort] = useState<'asc' | 'desc' | null>(null);
-  const [mappingModal, setMappingModal] = useState<{ modelId: number; modelName: string } | null>(null);
+  const [view, setView] = useState<'list' | 'mappings'>('list');
+  const [mappingModelId, setMappingModelId] = useState(0);
+  const [mappingModelName, setMappingModelName] = useState('');
   const serverUrl = localStorage.getItem('server_url') || 'http://localhost:8080';
 
   const load = () => {
@@ -366,11 +447,25 @@ function Models() {
     }
   };
 
-  const openMappingModal = (m: Model) => {
-    setMappingModal({ modelId: m.id, modelName: m.name });
+  const openMappingPage = (m: Model) => {
+    setMappingModelId(m.id);
+    setMappingModelName(m.name);
+    setView('mappings');
   };
 
   const sortIcon = prioritySort === 'asc' ? ' ▲' : prioritySort === 'desc' ? ' ▼' : '';
+
+  if (view === 'mappings') {
+    return (
+      <ModelMappingsPage
+        modelId={mappingModelId}
+        modelName={mappingModelName}
+        serverUrl={serverUrl}
+        providers={providers}
+        onBack={() => setView('list')}
+      />
+    );
+  }
 
   return (
     <div className="models-page">
@@ -410,7 +505,7 @@ function Models() {
                   </td>
                   <td>
                     <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openEdit(m); }}>编辑</button>
-                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openMappingModal(m); }}>供应商映射</button>
+                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openMappingPage(m); }}>供应商映射</button>
                     <button className="ant-btn ant-btn-dangerous" onClick={(e) => { e.stopPropagation(); handleDeleteRow(m); }}>删除</button>
                   </td>
                 </tr>
@@ -475,16 +570,6 @@ function Models() {
           </div>
         </div>
       </Drawer>
-      {mappingModal && (
-        <ProviderMappingModal
-          visible={true}
-          modelId={mappingModal.modelId}
-          modelName={mappingModal.modelName}
-          onClose={() => setMappingModal(null)}
-          serverUrl={serverUrl}
-          providers={providers}
-        />
-      )}
     </div>
   );
 }

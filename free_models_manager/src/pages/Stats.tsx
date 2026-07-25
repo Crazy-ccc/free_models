@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Toolbar from '../components/Toolbar';
 import { invoke } from '@tauri-apps/api/core';
-import type { UsageLogStatsResponse, Provider, Model, ProviderCredential, ApiKey } from '../types';
+import type { UsageLogStatsResponse } from '../types';
 import './Stats.less';
 
 type GroupBy = 'provider' | 'credential' | 'model' | 'api_key' | 'day';
@@ -36,33 +36,7 @@ function Stats() {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
 
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [models, setModels] = useState<Model[]>([]);
-  const [credentials, setCredentials] = useState<ProviderCredential[]>([]);
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
-
-  const [providerId, setProviderId] = useState<number | undefined>(undefined);
-  const [credentialId, setCredentialId] = useState<number | undefined>(undefined);
-  const [modelId, setModelId] = useState<number | undefined>(undefined);
-  const [apiKeyId, setApiKeyId] = useState<number | undefined>(undefined);
-
   const [stats, setStats] = useState<UsageLogStatsResponse | null>(null);
-
-  useEffect(() => {
-    invoke<Provider[]>('fetch_providers', { serverUrl }).then(setProviders).catch(() => {});
-    invoke<Model[]>('fetch_models', { serverUrl }).then(setModels).catch(() => {});
-    invoke<ApiKey[]>('fetch_api_keys', { serverUrl }).then(setApiKeys).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (providerId) {
-      invoke<ProviderCredential[]>('fetch_provider_credentials', { serverUrl, providerId })
-        .then(setCredentials)
-        .catch(() => setCredentials([]));
-    } else {
-      setCredentials([]);
-    }
-  }, [providerId, serverUrl]);
 
   const loadData = async () => {
     setLoading(true);
@@ -72,10 +46,6 @@ function Stats() {
         groupBy,
         startTime: startTime || undefined,
         endTime: endTime || undefined,
-        providerId: providerId ?? undefined,
-        credentialId: credentialId ?? undefined,
-        modelId: modelId ?? undefined,
-        apiKeyId: apiKeyId ?? undefined,
       });
       setStats(data);
     } catch {
@@ -92,13 +62,7 @@ function Stats() {
   const resetFilters = () => {
     setStartTime('');
     setEndTime('');
-    setProviderId(undefined);
-    setCredentialId(undefined);
-    setModelId(undefined);
-    setApiKeyId(undefined);
   };
-
-  const showFilters = groupBy !== 'day';
 
   return (
     <div className="stats-page">
@@ -140,62 +104,6 @@ function Stats() {
               ))}
             </select>
           </div>
-          {showFilters && (
-            <>
-              <div className="filter-group">
-                <label>供应商</label>
-                <select
-                  className="ant-select"
-                  value={providerId ?? ''}
-                  onChange={(e) => setProviderId(e.target.value ? Number(e.target.value) : undefined)}
-                >
-                  <option value="">全部</option>
-                  {providers.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-group">
-                <label>凭证</label>
-                <select
-                  className="ant-select"
-                  value={credentialId ?? ''}
-                  onChange={(e) => setCredentialId(e.target.value ? Number(e.target.value) : undefined)}
-                >
-                  <option value="">全部</option>
-                  {credentials.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-group">
-                <label>模型</label>
-                <select
-                  className="ant-select"
-                  value={modelId ?? ''}
-                  onChange={(e) => setModelId(e.target.value ? Number(e.target.value) : undefined)}
-                >
-                  <option value="">全部</option>
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-group">
-                <label>API Key</label>
-                <select
-                  className="ant-select"
-                  value={apiKeyId ?? ''}
-                  onChange={(e) => setApiKeyId(e.target.value ? Number(e.target.value) : undefined)}
-                >
-                  <option value="">全部</option>
-                  {apiKeys.map((k) => (
-                    <option key={k.id} value={k.id}>{k.name}</option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
         </div>
 
         {stats && (
