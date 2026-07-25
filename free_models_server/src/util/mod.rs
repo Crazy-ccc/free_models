@@ -8,3 +8,4 @@ pub mod encryption;
 pub mod proxy_ssrf;
 pub mod proxy_types;
 pub mod usage_log_collector;
+pub mod model_scheduler;

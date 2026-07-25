@@ -15,7 +15,7 @@ use log::info;
 use crate::middleware::admin_auth::AdminAuthMiddleware;
 use crate::middleware::auth::AuthMiddleware;
 use util::api_key_cache::ApiKeyCache;
-use crate::service::model_service::{ModelCache, ProviderCache};
+use util::model_scheduler::SchedulerCache;
 use util::penalty::PriorityPenalty;
 use config::Config;
 
@@ -42,9 +42,6 @@ async fn main() -> std::io::Result<()> {
         config.server_host, config.server_port
     );
 
-    info!("Auto-filling fingerprints for admin_key table");
-    service::admin_key_service::auto_fill_fingerprints(&db).await;
-
     let api_key_cache = ApiKeyCache::load_all(&db, redis_manager.clone()).await;
     info!("API key cache loaded");
 
@@ -53,8 +50,7 @@ async fn main() -> std::io::Result<()> {
     let priority_penalty = web::Data::new(PriorityPenalty::new(redis_manager.clone(), config.redis_cache_ttl_penalty));
     let app_state = web::Data::new(AppState {
         db: db.clone(),
-        model_cache: ModelCache::new(redis_manager.clone(), config.redis_cache_ttl_model),
-        provider_cache: ProviderCache::new(redis_manager.clone(), config.redis_cache_ttl_provider),
+        scheduler_cache: SchedulerCache::new(redis_manager.clone(), config.redis_cache_ttl_model),
         client,
         priority_penalty: priority_penalty.clone(),
         redis: redis_manager.clone(),
@@ -62,6 +58,12 @@ async fn main() -> std::io::Result<()> {
         encryption_key: config.encryption_key,
     });
     let log_collector = init_usage_log_collector(db.clone());
+
+    // 启动时归档昨日数据
+    if let Err(e) = service::usage_log_service::archive_yesterday(&db).await {
+        log::warn!("Failed to archive yesterday's usage log: {}", e);
+    }
+
     let server = HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
@@ -106,6 +108,29 @@ async fn main() -> std::io::Result<()> {
         }
         log_collector.shutdown().await;
         info!("Usage log collector flushed");
+    });
+
+    // 每日定时归档（00:05 UTC 执行）
+    let archive_db = db.clone();
+    tokio::spawn(async move {
+        loop {
+            let now = chrono::Utc::now();
+            let next_date = now.date_naive().succ_opt().unwrap_or_else(|| now.date_naive());
+            let next_naive = match next_date.and_hms_opt(0, 5, 0) {
+                Some(t) => t,
+                None => {
+                    tokio::time::sleep(Duration::from_secs(3600)).await;
+                    continue;
+                }
+            };
+            let now_naive = now.naive_utc();
+            let secs_until = (next_naive - now_naive).num_seconds().max(60) as u64;
+            tokio::time::sleep(Duration::from_secs(secs_until)).await;
+
+            if let Err(e) = service::usage_log_service::archive_yesterday(&archive_db).await {
+                log::warn!("Daily archive failed: {}", e);
+            }
+        }
     });
 
     server.await?;

@@ -14,15 +14,15 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::model_config::Entity")]
-    ModelConfig,
+    #[sea_orm(has_many = "super::provider_model_map::Entity")]
+    ProviderModelMap,
     #[sea_orm(has_many = "super::provider_credential::Entity")]
     ProviderCredential,
 }
 
-impl Related<super::model_config::Entity> for Entity {
+impl Related<super::provider_model_map::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::ModelConfig.def()
+        Relation::ProviderModelMap.def()
     }
 }
 

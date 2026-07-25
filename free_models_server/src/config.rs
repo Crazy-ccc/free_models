@@ -9,7 +9,6 @@ pub struct Config {
     pub redis_url: String,
     pub redis_enabled: bool,
     pub redis_cache_ttl_model: Duration,
-    pub redis_cache_ttl_provider: Duration,
     pub redis_cache_ttl_penalty: Duration,
     pub encryption_key: [u8; 32],
 }
@@ -40,12 +39,6 @@ impl Config {
                     .ok()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(30),
-            ),
-            redis_cache_ttl_provider: Duration::from_secs(
-                env::var("REDIS_CACHE_TTL_PROVIDER_SEC")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(600),
             ),
             redis_cache_ttl_penalty: Duration::from_secs(
                 env::var("REDIS_CACHE_TTL_PENALTY_SEC")

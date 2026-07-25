@@ -1,4 +1,7 @@
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+};
+use std::collections::HashSet;
 
 use crate::db::entities::provider_credential;
 use crate::util::encryption;
@@ -96,4 +99,16 @@ pub async fn update(
 pub async fn delete(db: &DatabaseConnection, id: i32) -> Result<bool, sea_orm::DbErr> {
     let result = provider_credential::Entity::delete_by_id(id).exec(db).await?;
     Ok(result.rows_affected > 0)
+}
+
+pub async fn list_active_by_provider_ids(
+    db: &DatabaseConnection,
+    provider_ids: HashSet<i32>,
+) -> Result<Vec<provider_credential::Model>, sea_orm::DbErr> {
+    provider_credential::Entity::find()
+        .filter(provider_credential::Column::ProviderId.is_in(provider_ids))
+        .filter(provider_credential::Column::IsActive.eq(true))
+        .order_by(provider_credential::Column::Priority, sea_orm::Order::Asc)
+        .all(db)
+        .await
 }

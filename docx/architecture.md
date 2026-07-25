@@ -163,7 +163,7 @@ free_models_token/
 | 构建工具 | Vite | 前端构建 |
 | UI 组件 | Ant Design 5 | 组件库 |
 | HTTP 客户端 | fetch | API 调用 |
-| 签名 | Web Crypto API | Ed25519 签名生成 |
+| 签名 | Tauri Rust 后端 (ed25519-dalek) | Ed25519 签名生成 |
 
 ## 核心流程
 

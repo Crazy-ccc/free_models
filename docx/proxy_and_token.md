@@ -193,7 +193,7 @@ if models.is_empty() {
 | prompt_tokens | `usage.prompt_tokens` | `usage.input_tokens` |
 | completion_tokens | `usage.completion_tokens` | `usage.output_tokens` |
 | total_tokens | `usage.total_tokens` | `input_tokens + output_tokens` |
-| cache_hit_tokens | `usage.prompt_tokens_details.cached_tokens` | `usage.cache_read_input_tokens` |
+| cache_hit_tokens | `usage.prompt_tokens_details.cached_tokens.prompt_cache_hit_tokens` | `usage.cache_read_input_tokens` |
 | cache_miss_tokens | `prompt_tokens - cached_tokens` | `input_tokens` |
 
 日志写入使用 `actix_web::rt::spawn` 在后台异步执行，不阻塞主请求流程。

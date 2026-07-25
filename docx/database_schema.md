@@ -167,5 +167,5 @@
 | prompt_tokens | `usage.prompt_tokens` | `usage.input_tokens` |
 | completion_tokens | `usage.completion_tokens` | `usage.output_tokens` |
 | total_tokens | `usage.total_tokens` | `input_tokens + output_tokens` |
-| cache_hit_tokens | `usage.prompt_tokens_details.cached_tokens` | `usage.cache_read_input_tokens` |
+| cache_hit_tokens | `usage.prompt_tokens_details.cached_tokens.prompt_cache_hit_tokens` | `usage.cache_read_input_tokens` |
 | cache_miss_tokens | `prompt_tokens - cached_tokens` | `input_tokens` |

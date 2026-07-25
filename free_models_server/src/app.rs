@@ -5,14 +5,13 @@ use reqwest::Client;
 use sea_orm::DatabaseConnection;
 
 use crate::db::redis::RedisManager;
-use crate::service::model_service::{ModelCache, ProviderCache};
 use crate::util::api_key_cache::ApiKeyCache;
+use crate::util::model_scheduler::SchedulerCache;
 use crate::util::penalty::PriorityPenalty;
 
 pub struct AppState {
     pub db: DatabaseConnection,
-    pub model_cache: ModelCache,
-    pub provider_cache: ProviderCache,
+    pub scheduler_cache: SchedulerCache,
     pub client: Client,
     pub priority_penalty: web::Data<PriorityPenalty>,
     pub redis: RedisManager,

@@ -6,7 +6,7 @@ mod api;
 use serde_json::Value;
 use std::sync::Mutex;
 use tauri::Manager;
-use api::{AdminClient, ProviderModel, fetch_provider_models};
+use api::AdminClient;
 use crypto::KeyPair;
 
 struct AppState {
@@ -259,8 +259,91 @@ fn load_keypair(state: tauri::State<'_, AppState>, priv_key_path: String, pub_ke
 }
 
 #[tauri::command]
-async fn fetch_provider_models_by_url(base_url: String) -> Result<Vec<ProviderModel>, String> {
-    fetch_provider_models(&base_url).await
+async fn fetch_provider_models(state: tauri::State<'_, AppState>, server_url: String, provider_id: i32) -> Result<Vec<Value>, String> {
+    let keypair = {
+        let kp = state.keypair.lock().map_err(|e| e.to_string())?;
+        kp.clone().ok_or_else(|| "Keypair not loaded. Please configure key paths in Settings.".to_string())?
+    };
+    let client = AdminClient::new(server_url, keypair);
+    client.list_provider_models(provider_id).await
+}
+
+#[tauri::command]
+async fn fetch_provider_model_maps(state: tauri::State<'_, AppState>, server_url: String, model_id: Option<i32>) -> Result<Vec<Value>, String> {
+    let keypair = {
+        let kp = state.keypair.lock().map_err(|e| e.to_string())?;
+        kp.clone().ok_or_else(|| "Keypair not loaded. Please configure key paths in Settings.".to_string())?
+    };
+    let client = AdminClient::new(server_url, keypair);
+    client.list_provider_model_maps(model_id, None).await
+}
+
+#[tauri::command]
+async fn create_provider_model_map(state: tauri::State<'_, AppState>, server_url: String, data: Value) -> Result<Value, String> {
+    let keypair = {
+        let kp = state.keypair.lock().map_err(|e| e.to_string())?;
+        kp.clone().ok_or_else(|| "Keypair not loaded. Please configure key paths in Settings.".to_string())?
+    };
+    let client = AdminClient::new(server_url, keypair);
+    client.create_provider_model_map(data).await
+}
+
+#[tauri::command]
+async fn update_provider_model_map(state: tauri::State<'_, AppState>, server_url: String, id: i32, data: Value) -> Result<Value, String> {
+    let keypair = {
+        let kp = state.keypair.lock().map_err(|e| e.to_string())?;
+        kp.clone().ok_or_else(|| "Keypair not loaded. Please configure key paths in Settings.".to_string())?
+    };
+    let client = AdminClient::new(server_url, keypair);
+    client.update_provider_model_map(id, data).await
+}
+
+#[tauri::command]
+async fn delete_provider_model_map(state: tauri::State<'_, AppState>, server_url: String, id: i32) -> Result<(), String> {
+    let keypair = {
+        let kp = state.keypair.lock().map_err(|e| e.to_string())?;
+        kp.clone().ok_or_else(|| "Keypair not loaded. Please configure key paths in Settings.".to_string())?
+    };
+    let client = AdminClient::new(server_url, keypair);
+    client.delete_provider_model_map(id).await
+}
+
+#[tauri::command]
+async fn import_provider_models(state: tauri::State<'_, AppState>, server_url: String, provider_id: i32, data: Value) -> Result<Value, String> {
+    let keypair = {
+        let kp = state.keypair.lock().map_err(|e| e.to_string())?;
+        kp.clone().ok_or_else(|| "Keypair not loaded. Please configure key paths in Settings.".to_string())?
+    };
+    let client = AdminClient::new(server_url, keypair);
+    client.import_provider_models(provider_id, data).await
+}
+
+#[tauri::command]
+async fn fetch_usage_log_stats(
+    state: tauri::State<'_, AppState>,
+    server_url: String,
+    group_by: String,
+    start_time: Option<String>,
+    end_time: Option<String>,
+    provider_id: Option<i32>,
+    credential_id: Option<i32>,
+    model_id: Option<i32>,
+    api_key_id: Option<i32>,
+) -> Result<Value, String> {
+    let keypair = {
+        let kp = state.keypair.lock().map_err(|e| e.to_string())?;
+        kp.clone().ok_or_else(|| "Keypair not loaded. Please configure key paths in Settings.".to_string())?
+    };
+    let client = AdminClient::new(server_url, keypair);
+    client.usage_log_stats(
+        &group_by,
+        start_time.as_deref(),
+        end_time.as_deref(),
+        provider_id,
+        credential_id,
+        model_id,
+        api_key_id,
+    ).await
 }
 
 fn main() {
@@ -295,7 +378,13 @@ fn main() {
             test_provider_credential,
             get_keypair_fingerprint,
             load_keypair,
-            fetch_provider_models_by_url,
+            fetch_provider_models,
+            fetch_provider_model_maps,
+            create_provider_model_map,
+            update_provider_model_map,
+            delete_provider_model_map,
+            import_provider_models,
+            fetch_usage_log_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,163 +1,252 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal } from 'antd';
 import Toolbar from '../components/Toolbar';
 import Drawer from '../components/Drawer';
+import Toggle from '../components/Toggle';
 import { invoke } from '@tauri-apps/api/core';
-import type { Model, Provider } from '../types';
+import type { Model, Provider, ProviderModelMap } from '../types';
 import './Models.less';
 
 interface FormState {
   name: string;
-  model_id: string;
-  provider_id: number;
-  protocols: string[];
   priority: number;
   timeout: number;
   context_length: number;
-  status: string;
+  is_active: boolean;
 }
 
 const EMPTY_FORM: FormState = {
   name: '',
-  model_id: '',
-  provider_id: 0,
-  protocols: [],
   priority: 0,
   timeout: 30,
-  context_length: 4096,
-  status: 'available',
+  context_length: 256000,
+  is_active: true,
 };
 
+/* ───── 供应商映射弹窗 ───── */
+
 const PROTOCOL_OPTIONS = ['openai', 'anthropic'];
+const STATUS_OPTIONS = [
+  { value: 'available', label: '可用' },
+  { value: 'unavailable', label: '不可用' },
+  { value: 'deprecated', label: '废弃' },
+];
 
-/* ───── 多选筛选组件（类 Ant Design table filter） ───── */
-
-interface ColFilterProps {
-  title: string;
-  options: { value: string; label: string }[];
-  selected: Set<string>;
-  onConfirm: (selected: Set<string>) => void;
-  onReset: () => void;
-  searchable?: boolean;
+interface MappingModalProps {
+  visible: boolean;
+  modelId: number;
+  modelName: string;
+  onClose: () => void;
+  serverUrl: string;
+  providers: Provider[];
 }
 
-function ColFilter({ title, options, selected, onConfirm, onReset, searchable }: ColFilterProps) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const [pending, setPending] = useState<Set<string>>(new Set(selected));
-  const [pos, setPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
-  const ref = useRef<HTMLDivElement>(null);
-  const iconRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+function ProviderMappingModal({ visible, modelId, modelName, onClose, serverUrl, providers }: MappingModalProps) {
+  const [maps, setMaps] = useState<ProviderModelMap[]>([]);
+
+  const loadMaps = () => {
+    invoke<ProviderModelMap[]>('fetch_provider_model_maps', { serverUrl, modelId }).then(setMaps);
+  };
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node) &&
-          dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+    if (visible) {
+      loadMaps();
+    }
+  }, [visible, modelId]);
 
-  const filtered = search
-    ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
-    : options;
-
-  const hasSelection = selected.size > 0;
-
-  const togglePending = (value: string) => {
-    setPending((prev) => {
-      const next = new Set(prev);
-      if (next.has(value)) {
-        next.delete(value);
-      } else {
-        next.add(value);
-      }
+  const handleFieldChange = (index: number, field: string, value: any) => {
+    setMaps((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
       return next;
     });
   };
 
-  const handleOpen = () => {
-    if (!iconRef.current) return;
-    const rect = iconRef.current.getBoundingClientRect();
-    setPos({ left: rect.left, top: rect.bottom + 4 });
-    setPending(new Set(selected));
-    setSearch('');
-    setOpen(true);
+  const handleSave = async (item: ProviderModelMap) => {
+    try {
+      if (item.id > 0) {
+        await invoke<ProviderModelMap>('update_provider_model_map', {
+          serverUrl,
+          id: item.id,
+          data: {
+            provider_id: item.provider_id,
+            provider_model_id: item.provider_model_id,
+            protocols: item.protocols,
+            priority: item.priority,
+            status: item.status,
+            is_active: item.is_active,
+          },
+        });
+      } else {
+        await invoke<ProviderModelMap>('create_provider_model_map', {
+          serverUrl,
+          data: {
+            model_id: modelId,
+            provider_id: item.provider_id,
+            provider_model_id: item.provider_model_id,
+            protocols: item.protocols,
+            priority: item.priority,
+            status: item.status,
+            is_active: item.is_active,
+          },
+        });
+      }
+      loadMaps();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleConfirm = () => {
-    onConfirm(pending);
-    setOpen(false);
+  const handleDelete = async (id: number) => {
+    Modal.confirm({
+      title: '确定删除？',
+      content: '将删除该供应商映射',
+      okText: '确定',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await invoke('delete_provider_model_map', { serverUrl, id });
+        loadMaps();
+      },
+    });
   };
 
-  const handleReset = () => {
-    onReset();
-    setPending(new Set());
-    setOpen(false);
+  const handleAdd = () => {
+    setMaps((prev) => [
+      ...prev,
+      {
+        id: 0,
+        model_id: modelId,
+        provider_id: providers[0]?.id ?? 0,
+        provider_model_id: '',
+        protocols: '',
+        priority: 0,
+        status: 'available',
+        is_active: true,
+      },
+    ]);
   };
 
   return (
-    <div ref={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-      <span>{title}</span>
-      <button
-        ref={iconRef}
-        className={`antd-filter-icon${hasSelection ? ' active' : ''}`}
-        onClick={handleOpen}
-      >
-        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.2">
-          <path d="M2 3h12l-4.5 5.5v4l-3 1.5v-5.5z" />
-        </svg>
-      </button>
-      {open && createPortal(
-        <div
-          ref={dropdownRef}
-          className="antd-filter-dropdown"
-          style={{ position: 'fixed', left: pos.left, top: pos.top }}
-        >
-          {searchable && (
-            <div className="antd-filter-search">
-              <input
-                className="ant-input"
-                placeholder="搜索..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                autoFocus
-              />
-            </div>
-          )}
-          <div className="antd-filter-options">
-            {filtered.length === 0 ? (
-              <div className="antd-filter-empty">无匹配项</div>
+    <Modal
+      title={`供应商映射 - ${modelName}`}
+      open={visible}
+      onCancel={onClose}
+      footer={null}
+      width={900}
+    >
+      <div className="mapping-table-wrap">
+        <table className="models-table mapping-table">
+          <thead>
+            <tr>
+              <th>供应商</th>
+              <th style={{ minWidth: 140 }}>供应商 Model ID *</th>
+              <th>协议</th>
+              <th>优先级</th>
+              <th>状态</th>
+              <th>启用</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {maps.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="models-empty">暂无映射</td>
+              </tr>
             ) : (
-              filtered.map((opt) => (
-                <label
-                  key={opt.value}
-                  className={`antd-filter-option${pending.has(opt.value) ? ' selected' : ''}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={pending.has(opt.value)}
-                    onChange={() => togglePending(opt.value)}
-                  />
-                  <span>{opt.label}</span>
-                </label>
+              maps.map((item, idx) => (
+                <tr key={item.id || `new-${idx}`}>
+                  <td>
+                    <select
+                      className="form-select ant-input"
+                      value={item.provider_id}
+                      onChange={(e) => handleFieldChange(idx, 'provider_id', Number(e.target.value))}
+                      style={{ width: 120 }}
+                    >
+                      {providers.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="ant-input"
+                      value={item.provider_model_id}
+                      onChange={(e) => handleFieldChange(idx, 'provider_model_id', e.target.value)}
+                      placeholder="必填"
+                      style={{ width: '100%' }}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      className="form-select ant-input"
+                      value={item.protocols}
+                      onChange={(e) => handleFieldChange(idx, 'protocols', e.target.value)}
+                      style={{ width: 120 }}
+                    >
+                      <option value="">不限</option>
+                      {PROTOCOL_OPTIONS.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      className="ant-input"
+                      value={item.priority}
+                      onChange={(e) => handleFieldChange(idx, 'priority', Number(e.target.value))}
+                      style={{ width: 70 }}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      className="form-select ant-input"
+                      value={item.status}
+                      onChange={(e) => handleFieldChange(idx, 'status', e.target.value)}
+                      style={{ width: 100 }}
+                    >
+                      {STATUS_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <Toggle
+                      checked={item.is_active}
+                      onChange={(checked) => handleFieldChange(idx, 'is_active', checked)}
+                    />
+                  </td>
+                  <td>
+                    <button
+                      className="ant-btn"
+                      style={{ marginRight: 6 }}
+                      onClick={() => handleSave(item)}
+                      disabled={!item.provider_model_id.trim()}
+                    >
+                      保存
+                    </button>
+                    <button
+                      className="ant-btn ant-btn-dangerous"
+                      onClick={() => handleDelete(item.id)}
+                    >
+                      删除
+                    </button>
+                  </td>
+                </tr>
               ))
             )}
-          </div>
-          <div className="antd-filter-footer">
-            <button className="antd-filter-btn antd-filter-btn-reset" onClick={handleReset}>重置</button>
-            <button className="antd-filter-btn antd-filter-btn-ok" onClick={handleConfirm}>确定</button>
-          </div>
-        </div>,
-        document.body
-      )}
-    </div>
+          </tbody>
+        </table>
+      </div>
+      <div style={{ marginTop: 12, textAlign: 'right' }}>
+        <button className="ant-btn ant-btn-primary" onClick={handleAdd}>+ 添加映射</button>
+      </div>
+    </Modal>
   );
 }
+
+/* ───── 模型管理页 ───── */
 
 function Models() {
   const [models, setModels] = useState<Model[]>([]);
@@ -166,10 +255,8 @@ function Models() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterProviderIds, setFilterProviderIds] = useState<Set<string>>(new Set());
-  const [filterProtocols, setFilterProtocols] = useState<Set<string>>(new Set());
-  const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set());
   const [prioritySort, setPrioritySort] = useState<'asc' | 'desc' | null>(null);
+  const [mappingModal, setMappingModal] = useState<{ modelId: number; modelName: string } | null>(null);
   const serverUrl = localStorage.getItem('server_url') || 'http://localhost:8080';
 
   const load = () => {
@@ -182,31 +269,11 @@ function Models() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const providerMap = new Map<number, Provider>(
-    providers.map((p) => [p.id, p] as [number, Provider])
-  );
-
-  const protocolsOf = (m: Model): string[] =>
-    m.protocols
-      ? m.protocols.split(',').map((s) => s.trim()).filter(Boolean)
-      : [];
-
   const filteredModels = useMemo(() => {
     let result = models;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      result = result.filter((m) =>
-        m.name.toLowerCase().includes(q) || m.model_id.toLowerCase().includes(q)
-      );
-    }
-    if (filterProviderIds.size > 0) {
-      result = result.filter((m) => filterProviderIds.has(String(m.provider_id)));
-    }
-    if (filterProtocols.size > 0) {
-      result = result.filter((m) => protocolsOf(m).some((p) => filterProtocols.has(p)));
-    }
-    if (filterStatuses.size > 0) {
-      result = result.filter((m) => filterStatuses.has(m.status));
+      result = result.filter((m) => m.name.toLowerCase().includes(q));
     }
     if (prioritySort) {
       result = [...result].sort((a, b) =>
@@ -214,7 +281,7 @@ function Models() {
       );
     }
     return result;
-  }, [models, searchQuery, filterProviderIds, filterProtocols, filterStatuses, prioritySort]);
+  }, [models, searchQuery, prioritySort]);
 
   const togglePrioritySort = () => {
     setPrioritySort((prev) => (prev === 'asc' ? 'desc' : prev === 'desc' ? null : 'asc'));
@@ -222,7 +289,7 @@ function Models() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm({ ...EMPTY_FORM, provider_id: providers[0]?.id ?? 0 });
+    setForm({ ...EMPTY_FORM });
     setDrawerOpen(true);
   };
 
@@ -230,15 +297,10 @@ function Models() {
     setEditingId(m.id);
     setForm({
       name: m.name,
-      model_id: m.model_id,
-      provider_id: m.provider_id,
-      protocols: m.protocols
-        ? m.protocols.split(',').map((s) => s.trim()).filter(Boolean)
-        : [],
       priority: m.priority,
       timeout: m.timeout,
       context_length: m.context_length,
-      status: m.status,
+      is_active: m.is_active,
     });
     setDrawerOpen(true);
   };
@@ -250,22 +312,18 @@ function Models() {
   const handleSave = async () => {
     const payload: Partial<Model> = {
       name: form.name,
-      model_id: form.model_id,
-      provider_id: form.provider_id,
-      protocols: form.protocols.join(','),
       priority: form.priority,
       timeout: form.timeout,
       context_length: form.context_length,
-      status: form.status as Model['status'],
+      is_active: form.is_active,
     };
     try {
       if (editingId !== null) {
         await invoke<Model>('update_model', { serverUrl, id: editingId, data: payload });
-        load();
       } else {
         await invoke<Model>('create_model', { serverUrl, data: payload });
-        load();
       }
+      load();
       setDrawerOpen(false);
     } catch (e) {
       console.error(e);
@@ -287,16 +345,29 @@ function Models() {
     });
   };
 
-  const STATUS_OPTIONS = [
-    { value: 'available', label: '可用' },
-    { value: 'unavailable', label: '不可用' },
-    { value: 'deprecated', label: '废弃' },
-  ];
+  const handleToggleActive = async (model: Model, checked: boolean) => {
+    const prevState = model.is_active;
+    setModels((prev) =>
+      prev.map((m) => (m.id === model.id ? { ...m, is_active: checked } : m))
+    );
+    try {
+      await invoke<Model>('update_model', {
+        serverUrl,
+        id: model.id,
+        data: { is_active: checked },
+      });
+    } catch (e) {
+      console.error(e);
+      setModels((prev) =>
+        prev.map((m) => (m.id === model.id ? { ...m, is_active: prevState } : m))
+      );
+    } finally {
+      load();
+    }
+  };
 
-  const statusLabel = (s: string) => STATUS_OPTIONS.find((o) => o.value === s)?.label ?? s;
-
-  const selectProtocol = (p: string) => {
-    setForm((f) => ({ ...f, protocols: [p] }));
+  const openMappingModal = (m: Model) => {
+    setMappingModal({ modelId: m.id, modelName: m.name });
   };
 
   const sortIcon = prioritySort === 'asc' ? ' ▲' : prioritySort === 'desc' ? ' ▼' : '';
@@ -311,65 +382,35 @@ function Models() {
           <thead>
             <tr>
               <th>名称</th>
-              <th>
-                <ColFilter
-                  title="供应商"
-                  options={providers.map((p) => ({ value: String(p.id), label: p.name }))}
-                  selected={filterProviderIds}
-                  onConfirm={(s) => setFilterProviderIds(s)}
-                  onReset={() => setFilterProviderIds(new Set())}
-                  searchable={true}
-                />
-              </th>
-              <th>
-                <ColFilter
-                  title="协议"
-                  options={PROTOCOL_OPTIONS.map((p) => ({ value: p, label: p }))}
-                  selected={filterProtocols}
-                  onConfirm={(s) => setFilterProtocols(s)}
-                  onReset={() => setFilterProtocols(new Set())}
-                />
-              </th>
+              <th>供应商</th>
               <th className="sortable-th" onClick={togglePrioritySort}>
                 优先级{sortIcon}
               </th>
               <th>超时</th>
               <th>上下文长度</th>
-              <th>
-                <ColFilter
-                  title="状态"
-                  options={STATUS_OPTIONS}
-                  selected={filterStatuses}
-                  onConfirm={(s) => setFilterStatuses(s)}
-                  onReset={() => setFilterStatuses(new Set())}
-                />
-              </th>
+              <th>启用</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             {filteredModels.length === 0 ? (
               <tr>
-                <td colSpan={8} className="models-empty">暂无数据</td>
+                <td colSpan={7} className="models-empty">暂无数据</td>
               </tr>
             ) : (
               filteredModels.map((m) => (
                 <tr key={m.id}>
                   <td className="clickable-name" onClick={() => openEdit(m)}>{m.name}</td>
-                  <td>{providerMap.get(m.provider_id)?.name ?? '-'}</td>
-                  <td>
-                    {PROTOCOL_OPTIONS.filter((p) => protocolsOf(m).includes(p)).map((p) => (
-                      <span key={p} className={`protocol-tag ${p}`}>{p}</span>
-                    ))}
-                  </td>
+                  <td>-</td>
                   <td>{m.priority}</td>
                   <td>{m.timeout}s</td>
                   <td>{m.context_length.toLocaleString()}</td>
                   <td>
-                    <span className={`status-tag ${m.status}`}>{statusLabel(m.status)}</span>
+                    <Toggle checked={m.is_active} onChange={(checked) => handleToggleActive(m, checked)} />
                   </td>
                   <td>
                     <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openEdit(m); }}>编辑</button>
+                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openMappingModal(m); }}>供应商映射</button>
                     <button className="ant-btn ant-btn-dangerous" onClick={(e) => { e.stopPropagation(); handleDeleteRow(m); }}>删除</button>
                   </td>
                 </tr>
@@ -391,46 +432,6 @@ function Models() {
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
-        </div>
-        <div className="form-field">
-          <label className="form-label">Model ID</label>
-          <input
-            className="form-input ant-input"
-            value={form.model_id}
-            onChange={(e) => setForm({ ...form, model_id: e.target.value })}
-          />
-        </div>
-        <div className="form-field">
-          <label className="form-label">供应商</label>
-          <select
-            className="form-select ant-input"
-            value={form.provider_id}
-            onChange={(e) =>
-              setForm({ ...form, provider_id: Number(e.target.value) })
-            }
-          >
-            {providers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-field">
-          <label className="form-label">协议</label>
-          <div className="protocol-select">
-            {PROTOCOL_OPTIONS.map((p) => (
-              <span
-                key={p}
-                className={`protocol-tag-select ${p}${
-                  form.protocols[0] === p ? ' selected' : ''
-                }`}
-                onClick={() => selectProtocol(p)}
-              >
-                {p}
-              </span>
-            ))}
-          </div>
         </div>
         <div className="form-row">
           <div className="form-field">
@@ -468,18 +469,22 @@ function Models() {
           />
         </div>
         <div className="form-field">
-          <label className="form-label">状态</label>
-          <select
-            className="form-select ant-input"
-            value={form.status}
-            onChange={(e) => setForm({ ...form, status: e.target.value })}
-          >
-            <option value="available">可用</option>
-            <option value="unavailable">不可用</option>
-            <option value="deprecated">废弃</option>
-          </select>
+          <label className="form-label">启用</label>
+          <div className="toggle-wrap">
+            <Toggle checked={form.is_active} onChange={(checked) => setForm({ ...form, is_active: checked })} />
+          </div>
         </div>
       </Drawer>
+      {mappingModal && (
+        <ProviderMappingModal
+          visible={true}
+          modelId={mappingModal.modelId}
+          modelName={mappingModal.modelName}
+          onClose={() => setMappingModal(null)}
+          serverUrl={serverUrl}
+          providers={providers}
+        />
+      )}
     </div>
   );
 }

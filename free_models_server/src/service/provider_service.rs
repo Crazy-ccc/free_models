@@ -1,4 +1,5 @@
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use std::collections::{HashMap, HashSet};
 
 use crate::db::entities::provider_config;
 
@@ -48,4 +49,15 @@ pub async fn update(
 pub async fn delete(db: &DatabaseConnection, id: i32) -> Result<bool, sea_orm::DbErr> {
     let result = provider_config::Entity::delete_by_id(id).exec(db).await?;
     Ok(result.rows_affected > 0)
+}
+
+pub async fn list_by_ids(
+    db: &DatabaseConnection,
+    ids: HashSet<i32>,
+) -> Result<HashMap<i32, provider_config::Model>, sea_orm::DbErr> {
+    let models = provider_config::Entity::find()
+        .filter(provider_config::Column::Id.is_in(ids))
+        .all(db)
+        .await?;
+    Ok(models.into_iter().map(|m| (m.id, m)).collect())
 }

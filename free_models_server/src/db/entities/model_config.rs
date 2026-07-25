@@ -6,31 +6,24 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    pub provider_id: i32,
     pub name: String,
-    pub model_id: String,
     pub timeout: i32,
-    pub protocols: String,
-    pub context_length: i32,
     pub priority: i32,
-    pub status: String,
+    pub is_active: bool,
+    pub context_length: i32,
     pub created_time: DateTime,
     pub last_updated: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(
-        belongs_to = "super::provider_config::Entity",
-        from = "Column::ProviderId",
-        to = "super::provider_config::Column::Id"
-    )]
-    ProviderConfig,
+    #[sea_orm(has_many = "super::provider_model_map::Entity")]
+    ProviderModelMap,
 }
 
-impl Related<super::provider_config::Entity> for Entity {
+impl Related<super::provider_model_map::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::ProviderConfig.def()
+        Relation::ProviderModelMap.def()
     }
 }
 

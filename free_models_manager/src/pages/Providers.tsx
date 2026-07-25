@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal } from 'antd';
+import { message, Modal } from 'antd';
 import Toolbar from '../components/Toolbar';
 import Toggle from '../components/Toggle';
 import Drawer from '../components/Drawer';
@@ -26,10 +26,9 @@ function Providers() {
   const [importOpen, setImportOpen] = useState(false);
   const [importProvider, setImportProvider] = useState<Provider | null>(null);
   const [proxyModels, setProxyModels] = useState<{ id: string }[]>([]);
-  const [selectedProxyIds, setSelectedProxyIds] = useState<Set<string>>(new Set());
+  const [importModelDetails, setImportModelDetails] = useState<Record<string, { provider_model_id: string; model_id: string; protocols: string; context_length?: number }>>({});
   const [importSearch, setImportSearch] = useState('');
   const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState('');
 
   const [credOpen, setCredOpen] = useState(false);
   const [credProvider, setCredProvider] = useState<Provider | null>(null);
@@ -59,7 +58,7 @@ function Providers() {
   }, [providers, searchQuery]);
 
   const existingModelIds = useMemo(() => {
-    return new Set(models.map((m: any) => m.model_id));
+    return new Set(models.map((m: any) => m.id));
   }, [models]);
 
   const filteredProxyModels = useMemo(() => {
@@ -246,17 +245,16 @@ function Providers() {
   const openTest = (cred: ProviderCredential) => {
     if (testLoading) return;
     if (!credProvider) return;
-    const providerModels = models.filter((m: any) => m.provider_id === credProvider.id);
-    if (providerModels.length === 0) {
-      Modal.error({ title: '无可用模型', content: '该供应商下没有模型，无法测试' });
+    if (models.length === 0) {
+      Modal.error({ title: '无可用模型', content: '没有模型，无法测试' });
       return;
     }
-    if (providerModels.length === 1) {
-      runTest(cred, providerModels[0].model_id);
+    if (models.length === 1) {
+      runTest(cred, models[0].id);
       return;
     }
     setTestCred(cred);
-    setTestModelId(providerModels[0].model_id);
+    setTestModelId(models[0].id);
     setTestOpen(true);
   };
 
@@ -269,54 +267,49 @@ function Providers() {
   const openImport = (provider: Provider) => {
     setImportProvider(provider);
     setProxyModels([]);
-    setSelectedProxyIds(new Set());
+    setImportModelDetails({});
     setImportSearch('');
-    invoke<any[]>('fetch_provider_models_by_url', { baseUrl: provider.base_url })
+    invoke<any[]>('fetch_provider_models', { serverUrl, providerId: provider.id })
       .then((data) => {
         setProxyModels(data);
         setImportOpen(true);
       })
       .catch(() => {
-        setImportError('该供应商不支持一键导入模型');
+        message.error('该供应商不支持一键导入模型');
       });
   };
 
   const toggleSelect = (id: string) => {
-    setSelectedProxyIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
+    setImportModelDetails((prev) => {
+      const next = { ...prev };
+      if (id in next) {
+        delete next[id];
       } else {
-        next.add(id);
+        next[id] = { provider_model_id: id, model_id: id, protocols: 'openai' };
       }
       return next;
     });
   };
 
   const confirmImport = async () => {
-    if (!importProvider || selectedProxyIds.size === 0) return;
+    if (!importProvider || Object.keys(importModelDetails).length === 0) return;
     setImporting(true);
-    for (const modelId of selectedProxyIds) {
-      try {
-        await invoke('create_model', {
-          serverUrl,
-          data: {
-            name: modelId,
-            model_id: modelId,
-            provider_id: importProvider.id,
-            protocols: 'openai',
-            priority: 0,
-            timeout: 30,
-            status: 'available',
-          },
-        });
-      } catch (e) {
-        console.error(e);
-      }
+    try {
+      const models = Object.entries(importModelDetails).map(([_modelId, details]) => ({
+        model_id: details.model_id,
+        provider_model_id: details.provider_model_id,
+        protocols: details.protocols,
+        context_length: details.context_length,
+      }));
+      await invoke('import_provider_models', { serverUrl, providerId: importProvider.id, data: models });
+      message.success(`成功导入 ${models.length} 个模型`);
+      setImportOpen(false);
+      load();
+    } catch (e) {
+      message.error('导入失败');
+    } finally {
+      setImporting(false);
     }
-    setImporting(false);
-    setImportOpen(false);
-    load();
   };
 
   return (
@@ -356,13 +349,6 @@ function Providers() {
         </table>
       </div>
 
-      {importError && (
-        <div style={{ marginBottom: 16 }}>
-          <Alert type="error" message={importError} closable showIcon
-            onClose={() => setImportError('')} />
-        </div>
-      )}
-
       <Drawer
         open={drawerOpen}
         title={editing ? '编辑供应商' : '新增供应商'}
@@ -400,32 +386,82 @@ function Providers() {
               ) : (
                 filteredProxyModels.map((m) => {
                   const imported = existingModelIds.has(m.id);
+                  const selected = m.id in importModelDetails;
+                  const details = importModelDetails[m.id];
                   return (
-                    <label
+                    <div
                       key={m.id}
                       className={`modal-row${imported ? ' imported' : ''}`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedProxyIds.has(m.id)}
-                        disabled={imported}
-                        onChange={() => !imported && toggleSelect(m.id)}
-                      />
-                      <span>{m.id}</span>
-                      {imported && <span className="modal-tag">已导入</span>}
-                    </label>
+                      <div className="modal-row-main" onClick={() => !imported && toggleSelect(m.id)}>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          disabled={imported}
+                          readOnly
+                        />
+                        <span>{m.id}</span>
+                        {imported && <span className="modal-tag">已导入</span>}
+                      </div>
+                      {selected && !imported && (
+                        <div className="modal-row-detail">
+                          <div className="detail-field">
+                            <label>Provider Model ID</label>
+                            <span>{details.provider_model_id}</span>
+                          </div>
+                          <div className="detail-field">
+                            <label>Model ID（可修改）</label>
+                            <input
+                              value={details.model_id}
+                              onChange={(e) =>
+                                setImportModelDetails((prev) => ({
+                                  ...prev,
+                                  [m.id]: { ...prev[m.id], model_id: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="detail-field">
+                            <label>Protocols</label>
+                            <input
+                              value={details.protocols}
+                              onChange={(e) =>
+                                setImportModelDetails((prev) => ({
+                                  ...prev,
+                                  [m.id]: { ...prev[m.id], protocols: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="detail-field">
+                            <label>Context Length（可选）</label>
+                            <input
+                              type="number"
+                              value={details.context_length ?? ''}
+                              onChange={(e) =>
+                                setImportModelDetails((prev) => ({
+                                  ...prev,
+                                  [m.id]: { ...prev[m.id], context_length: e.target.value ? parseInt(e.target.value) : undefined },
+                                }))
+                              }
+                              placeholder="默认 256000"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
                 })
               )}
             </div>
             <div className="modal-footer">
               <span className="modal-count">
-                已选 {selectedProxyIds.size} 项
+                已选 {Object.keys(importModelDetails).length} 项
               </span>
               <button
                 className="ant-btn ant-btn-primary"
                 onClick={confirmImport}
-                disabled={importing || selectedProxyIds.size === 0}
+                disabled={importing || Object.keys(importModelDetails).length === 0}
               >
                 {importing ? '导入中...' : '确认导入'}
               </button>
@@ -516,25 +552,23 @@ function Providers() {
               <span className="modal-close" onClick={() => !testLoading && setTestOpen(false)}>&times;</span>
             </div>
             <div className="modal-list">
-              {models
-                .filter((m: any) => m.provider_id === credProvider?.id)
-                .map((m: any) => (
-                  <label
-                    key={m.id}
-                    className={`test-model-row${testModelId === m.model_id ? ' selected' : ''}`}
-                  >
-                    <input
-                      type="radio"
-                      name="test-model"
-                      value={m.model_id}
-                      checked={testModelId === m.model_id}
-                      onChange={() => setTestModelId(m.model_id)}
-                      disabled={testLoading}
-                    />
-                    <span className="test-model-name">{m.name}</span>
-                    <span className="test-model-id">{m.model_id}</span>
-                  </label>
-                ))}
+              {models.map((m: any) => (
+                <label
+                  key={m.id}
+                  className={`test-model-row${testModelId === m.id ? ' selected' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="test-model"
+                    value={m.id}
+                    checked={testModelId === m.id}
+                    onChange={() => setTestModelId(m.id)}
+                    disabled={testLoading}
+                  />
+                  <span className="test-model-name">{m.name}</span>
+                  <span className="test-model-id">{m.id}</span>
+                </label>
+              ))}
             </div>
             <div className="modal-footer">
               <button className="ant-btn" onClick={() => setTestOpen(false)} disabled={testLoading}>取消</button>

@@ -21,14 +21,24 @@ export interface ProviderCredential {
 
 export interface Model {
   id: number;
-  provider_id: number;
   name: string;
-  model_id: string;
   timeout: number;
-  protocols: string;
   context_length: number;
   priority: number;
-  status: 'available' | 'unavailable' | 'deprecated';
+  is_active: boolean;
+  created_time?: string;
+  last_updated?: string;
+}
+
+export interface ProviderModelMap {
+  id: number;
+  model_id: number;
+  provider_id: number;
+  provider_model_id: string;
+  protocols: string;
+  priority: number;
+  status: string;
+  is_active: boolean;
   created_time?: string;
   last_updated?: string;
 }
@@ -42,7 +52,7 @@ export interface ApiKey {
   last_updated?: string;
 }
 
-export type PageKey = 'overview' | 'providers' | 'models' | 'apiKeys' | 'settings';
+export type PageKey = 'overview' | 'providers' | 'models' | 'apiKeys' | 'stats' | 'settings';
 
 export interface ServiceStatus {
   healthy: boolean;
@@ -59,4 +69,23 @@ export interface TestCredentialResult {
   provider_id: number;
   credential_id: number;
   error: string | null;
+}
+
+export interface UsageLogStatItem {
+  dimension: string;
+  dimension_id: string | null;
+  dimension_name: string;
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cache_hit_tokens: number;
+  cache_miss_tokens: number;
+  avg_duration_ms: number;
+  max_duration_ms: number;
+}
+
+export interface UsageLogStatsResponse {
+  total: UsageLogStatItem;
+  items: UsageLogStatItem[];
 }

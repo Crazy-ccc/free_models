@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Toolbar from '../components/Toolbar';
 import { invoke } from '@tauri-apps/api/core';
-import type { ServiceStatus } from '../types';
+import type { ServiceStatus, UsageLogStatItem } from '../types';
 import './Overview.less';
 
 interface OverviewProps {
@@ -11,6 +11,7 @@ interface OverviewProps {
 function Overview({ onStatusChange }: OverviewProps) {
   const [status, setStatus] = useState<ServiceStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [combinedStats, setCombinedStats] = useState<UsageLogStatItem[]>([]);
 
   const load = async () => {
     try {
@@ -28,6 +29,11 @@ function Overview({ onStatusChange }: OverviewProps) {
 
   useEffect(() => {
     load();
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const serverUrl = localStorage.getItem('server_url') || 'http://localhost:8080';
+    invoke<any>('fetch_usage_log_stats', { serverUrl, groupBy: 'provider_model', startTime: yesterday, endTime: yesterday })
+      .then(res => setCombinedStats(res?.items ?? []))
+      .catch(() => setCombinedStats([]));
   }, []);
 
   const handleRefresh = async () => {
@@ -99,6 +105,41 @@ function Overview({ onStatusChange }: OverviewProps) {
             </div>
           </div>
         </div>
+
+        {!loading && (
+          <div className="yesterday-stats">
+            <div className="yesterday-section">
+              <div className="yesterday-title">昨日 Token 消耗</div>
+              <table className="yesterday-table">
+                <thead>
+                  <tr>
+                    <th>供应商</th><th>模型</th><th>请求数</th><th>Prompt Tokens</th><th>Completion Tokens</th><th>Total Tokens</th><th>缓存命中</th><th>缓存命中率</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {combinedStats.map((item, i) => {
+                    const totalCache = item.cache_hit_tokens + item.cache_miss_tokens;
+                    const hitRate = totalCache > 0 ? (item.cache_hit_tokens / totalCache * 100).toFixed(1) : '0';
+                    const parts = item.dimension_name.split(' / ');
+                    return (
+                      <tr key={i}>
+                        <td>{parts[0]}</td>
+                        <td>{parts[1]}</td>
+                        <td>{item.requests}</td>
+                        <td>{item.prompt_tokens.toLocaleString()}</td>
+                        <td>{item.completion_tokens.toLocaleString()}</td>
+                        <td>{item.total_tokens.toLocaleString()}</td>
+                        <td>{item.cache_hit_tokens.toLocaleString()}</td>
+                        <td>{hitRate}%</td>
+                      </tr>
+                    );
+                  })}
+                  {combinedStats.length === 0 && <tr><td colSpan={8} className="yesterday-empty">昨日无数据</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         <div className="penalties">
           <div className="penalties-title">惩罚中的模型</div>

@@ -1,10 +1,10 @@
+use sea_orm::DatabaseConnection;
 use std::sync::OnceLock;
 use std::time::Duration;
-use sea_orm::DatabaseConnection;
 use tokio::sync::mpsc;
 
-use crate::service::model_service::ModelProviderInfo;
 use crate::service::usage_log_service;
+use crate::util::model_scheduler::ModelProviderInfo;
 use crate::util::proxy_types::{Protocol, UsageInfo};
 
 static USAGE_LOG_SENDER: OnceLock<mpsc::Sender<usage_log_service::UsageLogInsert>> = OnceLock::new();

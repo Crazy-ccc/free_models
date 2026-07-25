@@ -117,4 +117,28 @@ impl PriorityPenalty {
         rest.extend(penalized);
         rest
     }
+
+    pub async fn list_active_penalties(&self) -> Vec<(String, String, u64)> {
+        let now = Instant::now();
+        let mut fallback = self.fallback.lock().unwrap();
+        let mut result = Vec::new();
+        let mut expired_keys = Vec::new();
+
+        for (key, expiry) in fallback.iter() {
+            if *expiry > now {
+                let remaining = expiry.duration_since(now).as_secs();
+                if let Some((model_name, provider_name)) = key.split_once('|') {
+                    result.push((model_name.to_string(), provider_name.to_string(), remaining));
+                }
+            } else {
+                expired_keys.push(key.clone());
+            }
+        }
+
+        for key in expired_keys {
+            fallback.remove(&key);
+        }
+
+        result
+    }
 }

@@ -6,6 +6,7 @@ import Providers from './pages/Providers';
 import Models from './pages/Models';
 import ApiKeys from './pages/ApiKeys';
 import Settings from './pages/Settings';
+import Stats from './pages/Stats';
 import type { PageKey } from './types';
 
 function App() {
@@ -39,6 +40,8 @@ function App() {
         return <Models />;
       case 'apiKeys':
         return <ApiKeys />;
+      case 'stats':
+        return <Stats />;
       case 'settings':
         return <Settings />;
       default:

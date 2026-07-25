@@ -126,6 +126,14 @@ impl AdminClient {
         Ok(())
     }
 
+    pub async fn list_provider_models(&self, provider_id: i32) -> Result<Vec<Value>, String> {
+        let resp = self.signed_request("GET", &format!("/admin/providers/{}/models", provider_id), None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
     pub async fn list_models(&self) -> Result<Vec<Value>, String> {
         let resp = self.signed_request("GET", "/admin/models", None).await?;
         if !resp.status().is_success() {
@@ -269,28 +277,95 @@ impl AdminClient {
         }
         resp.json().await.map_err(|e| e.to_string())
     }
-}
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct ProviderModel {
-    pub id: String,
-}
-
-pub async fn fetch_provider_models(base_url: &str) -> Result<Vec<ProviderModel>, String> {
-    let url = format!("{}/models", base_url.trim_end_matches('/'));
-    let client = Client::new();
-    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
+    pub async fn list_provider_model_maps(&self, model_id: Option<i32>, provider_id: Option<i32>) -> Result<Vec<Value>, String> {
+        let mut path = "/admin/provider_model_maps".to_string();
+        let mut params = Vec::new();
+        if let Some(mid) = model_id {
+            params.push(format!("model_id={}", mid));
+        }
+        if let Some(pid) = provider_id {
+            params.push(format!("provider_id={}", pid));
+        }
+        if !params.is_empty() {
+            path.push('?');
+            path.push_str(&params.join("&"));
+        }
+        let resp = self.signed_request("GET", &path, None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
     }
-    let json: Value = resp.json().await.map_err(|e| e.to_string())?;
-    let data = json.get("data").and_then(|d| d.as_array()).ok_or("missing data array")?;
-    let models: Vec<ProviderModel> = data
-        .iter()
-        .filter_map(|item| {
-            let id = item.get("id")?.as_str()?.to_string();
-            Some(ProviderModel { id })
-        })
-        .collect();
-    Ok(models)
+
+    pub async fn create_provider_model_map(&self, data: Value) -> Result<Value, String> {
+        let body = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("POST", "/admin/provider_model_maps", Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn update_provider_model_map(&self, id: i32, data: Value) -> Result<Value, String> {
+        let body = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("PUT", &format!("/admin/provider_model_maps/{}", id), Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn delete_provider_model_map(&self, id: i32) -> Result<(), String> {
+        let resp = self.signed_request("DELETE", &format!("/admin/provider_model_maps/{}", id), None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        Ok(())
+    }
+
+    pub async fn import_provider_models(&self, provider_id: i32, data: Value) -> Result<Value, String> {
+        let body = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        let resp = self.signed_request("POST", &format!("/admin/providers/{}/models/import", provider_id), Some(body)).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn usage_log_stats(
+        &self,
+        group_by: &str,
+        start_time: Option<&str>,
+        end_time: Option<&str>,
+        provider_id: Option<i32>,
+        credential_id: Option<i32>,
+        model_id: Option<i32>,
+        api_key_id: Option<i32>,
+    ) -> Result<Value, String> {
+        let mut path = format!("/admin/usage_log/stats?group_by={}", group_by);
+        if let Some(v) = start_time {
+            path.push_str(&format!("&start_time={}", v));
+        }
+        if let Some(v) = end_time {
+            path.push_str(&format!("&end_time={}", v));
+        }
+        if let Some(v) = provider_id {
+            path.push_str(&format!("&provider_id={}", v));
+        }
+        if let Some(v) = credential_id {
+            path.push_str(&format!("&credential_id={}", v));
+        }
+        if let Some(v) = model_id {
+            path.push_str(&format!("&model_id={}", v));
+        }
+        if let Some(v) = api_key_id {
+            path.push_str(&format!("&api_key_id={}", v));
+        }
+        let resp = self.signed_request("GET", &path, None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
 }

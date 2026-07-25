@@ -1,15 +1,15 @@
+use actix_web::HttpResponse;
 use actix_web::http::StatusCode;
 use actix_web::web;
-use actix_web::HttpResponse;
 use log::{debug, error, info, warn};
 use reqwest::Client;
 use serde_json::Value;
 use std::time::Duration;
 
-use crate::service::model_service::ModelProviderInfo;
+use crate::util::model_scheduler::ModelProviderInfo;
 use crate::util::penalty::PriorityPenalty;
 pub(crate) use crate::util::proxy_ssrf::validate_url_safe;
-pub(crate) use crate::util::proxy_types::{log_status, Protocol, UsageInfo};
+pub(crate) use crate::util::proxy_types::{Protocol, UsageInfo, log_status};
 use crate::util::usage_log_collector::spawn_usage_log;
 
 /// 扫描缓冲中的完整 SSE 事件，按 \n\n 分割提取，检测 usage 字段。

@@ -12,6 +12,7 @@ const NAV_ITEMS: Array<{ key: PageKey; label: string }> = [
   { key: 'providers', label: '供应商' },
   { key: 'models', label: '模型' },
   { key: 'apiKeys', label: 'API Keys' },
+  { key: 'stats', label: '统计' },
   { key: 'settings', label: '设置' },
 ];
 

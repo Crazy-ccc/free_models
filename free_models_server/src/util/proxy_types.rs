@@ -1,6 +1,5 @@
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
-use log::info;
 use serde_json::Value;
 
 use crate::response;

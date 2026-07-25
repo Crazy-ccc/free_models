@@ -301,12 +301,3 @@ pub fn parse_openssh_ed25519_pubkey(pubkey_str: &str) -> Option<[u8; 32]> {
     key.copy_from_slice(&decoded[19..51]);
     Some(key)
 }
-
-pub fn compute_fingerprint(raw_pubkey: &[u8; 32]) -> String {
-    use sha2::{Digest, Sha256};
-    let hash = Sha256::digest(raw_pubkey);
-    format!(
-        "SHA256:{}",
-        base64::engine::general_purpose::STANDARD_NO_PAD.encode(&hash)
-    )
-}

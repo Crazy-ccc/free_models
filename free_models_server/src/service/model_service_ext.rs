@@ -1,4 +1,4 @@
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
 
 use crate::db::entities::model_config;
 
@@ -12,25 +12,19 @@ pub async fn get(db: &DatabaseConnection, id: i32) -> Result<Option<model_config
 
 pub async fn create(
     db: &DatabaseConnection,
-    provider_id: i32,
     name: &str,
-    model_id: &str,
     timeout: i32,
-    protocols: &str,
     priority: i32,
-    status: String,
     context_length: i32,
+    is_active: bool,
 ) -> Result<model_config::Model, sea_orm::DbErr> {
     let now = chrono::Utc::now().naive_utc();
     let model = model_config::ActiveModel {
-        provider_id: Set(provider_id),
         name: Set(name.to_string()),
-        model_id: Set(model_id.to_string()),
         timeout: Set(timeout),
-        protocols: Set(protocols.to_string()),
         priority: Set(priority),
-        status: Set(status),
         context_length: Set(context_length),
+        is_active: Set(is_active),
         created_time: Set(now),
         last_updated: Set(now),
         ..Default::default()
@@ -41,14 +35,11 @@ pub async fn create(
 pub async fn update(
     db: &DatabaseConnection,
     id: i32,
-    provider_id: i32,
     name: &str,
-    model_id: &str,
     timeout: i32,
-    protocols: &str,
     priority: i32,
-    status: String,
     context_length: i32,
+    is_active: bool,
 ) -> Result<model_config::Model, sea_orm::DbErr> {
     let model = model_config::Entity::find_by_id(id).one(db).await?;
     let model = match model {
@@ -57,14 +48,11 @@ pub async fn update(
     };
     let now = chrono::Utc::now().naive_utc();
     let mut active_model: model_config::ActiveModel = model.into();
-    active_model.provider_id = Set(provider_id);
     active_model.name = Set(name.to_string());
-    active_model.model_id = Set(model_id.to_string());
     active_model.timeout = Set(timeout);
-    active_model.protocols = Set(protocols.to_string());
     active_model.priority = Set(priority);
-    active_model.status = Set(status);
     active_model.context_length = Set(context_length);
+    active_model.is_active = Set(is_active);
     active_model.last_updated = Set(now);
     active_model.update(db).await
 }
@@ -74,12 +62,21 @@ pub async fn delete(db: &DatabaseConnection, id: i32) -> Result<bool, sea_orm::D
     Ok(result.rows_affected > 0)
 }
 
-use sea_orm::{ColumnTrait, PaginatorTrait, QueryFilter};
+/// 返回所有活跃模型，按 priority 升序
+pub async fn list_all_active_ordered(
+    db: &DatabaseConnection,
+) -> Result<Vec<model_config::Model>, sea_orm::DbErr> {
+    model_config::Entity::find()
+        .filter(model_config::Column::IsActive.eq(true))
+        .order_by_asc(model_config::Column::Priority)
+        .all(db)
+        .await
+}
 
-/// 统计可用模型（status = 'available'）
+/// 统计可用模型（is_active = true）
 pub async fn count_active(db: &DatabaseConnection) -> Result<u64, sea_orm::DbErr> {
     model_config::Entity::find()
-        .filter(model_config::Column::Status.eq("available"))
+        .filter(model_config::Column::IsActive.eq(true))
         .count(db)
         .await
 }

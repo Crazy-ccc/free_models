@@ -1,4 +1,4 @@
-use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web::{HttpRequest, HttpResponse, web};
 use log::warn;
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -8,6 +8,7 @@ use crate::response;
 use crate::service::api_key_service;
 use crate::service::model_service;
 use crate::service::proxy_service;
+use crate::util::model_scheduler;
 use crate::util::tokenizer;
 
 fn extract_bearer_token(req: &HttpRequest) -> Option<String> {
@@ -85,13 +86,7 @@ async fn handle_chat_request(
         return protocol.bad_request("messages field is required");
     }
 
-    let all_models = match model_service::get_all_available_models_by_priority(
-        &state.db,
-        &state.model_cache,
-        &state.provider_cache,
-        &state.encryption_key,
-    )
-    .await
+    let all_models = match model_scheduler::schedule_all_available(&state.db, &state.encryption_key, &state.scheduler_cache).await
     {
         Ok(m) => m,
         Err(e) => {
@@ -181,9 +176,9 @@ async fn handle_chat_request(
 }
 
 fn merge_preferred_first(
-    all_models: Vec<model_service::ModelProviderInfo>,
+    all_models: Vec<model_scheduler::ModelProviderInfo>,
     preferred_name: &str,
-) -> Vec<model_service::ModelProviderInfo> {
+) -> Vec<model_scheduler::ModelProviderInfo> {
     let (mut preferred, rest): (Vec<_>, Vec<_>) = all_models
         .into_iter()
         .partition(|m| m.model_name == preferred_name);
