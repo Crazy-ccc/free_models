@@ -133,26 +133,6 @@
   }
 }
 
-.modal-search {
-  padding: 12px 24px;
-
-  .ant-input {
-    width: 100%;
-    height: @control-height;
-    padding: @padding-input;
-    border: 1px solid @outline;
-    border-radius: @radius-md;
-    background: @bg-layout;
-    color: @on-surface;
-    font-size: @font-base;
-
-    &:focus {
-      outline: none;
-      border-color: @primary;
-    }
-  }
-}
-
 .modal-list {
   flex: 1;
   overflow-y: auto;
@@ -166,73 +146,6 @@
   text-align: center;
   color: @on-surface-tertiary;
   font-size: @font-base;
-}
-
-.modal-row {
-  display: flex;
-  flex-direction: column;
-  padding: 8px 0;
-  border-bottom: 1px solid @outline-variant;
-  font-size: @font-base;
-  color: @on-surface;
-
-  &.imported {
-    .modal-row-main {
-      cursor: not-allowed;
-      color: @on-surface-tertiary;
-    }
-  }
-
-  .modal-row-main {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-  }
-
-  .modal-row-detail {
-    display: flex;
-    gap: 12px;
-    margin: 8px 0 4px 26px;
-
-    .detail-field {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-
-      label {
-        font-size: @font-sm;
-        color: @on-surface-variant;
-      }
-
-      input {
-        height: 32px;
-        padding: 0 8px;
-        border: 1px solid @outline;
-        border-radius: @radius-sm;
-        background: @bg-layout;
-        color: @on-surface;
-        font-size: @font-sm;
-
-        &:focus {
-          outline: none;
-          border-color: @primary;
-        }
-      }
-    }
-  }
-
-  input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-  }
-
-  .modal-tag {
-    margin-left: auto;
-    font-size: @font-sm;
-    color: @on-surface-tertiary;
-  }
 }
 
 .modal-footer {
@@ -286,11 +199,6 @@
     font-family: @font-family-code;
     flex-shrink: 0;
   }
-}
-
-.modal-count {
-  font-size: @font-sm;
-  color: @on-surface-variant;
 }
 
 .cred-modal-content {

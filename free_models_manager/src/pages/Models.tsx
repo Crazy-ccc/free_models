@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal } from 'antd';
+import { Modal, Checkbox } from 'antd';
 import Toolbar from '../components/Toolbar';
 import Drawer from '../components/Drawer';
 import Toggle from '../components/Toggle';
@@ -25,7 +25,7 @@ const EMPTY_FORM: FormState = {
 
 /* ───── 供应商映射子页面 ───── */
 
-const PROTOCOL_OPTIONS = ['openai', 'anthropic'];
+const PROTOCOL_OPTIONS = ['openai', 'anthropic', 'responses'] as const;
 const STATUS_OPTIONS = [
   { value: 'available', label: '可用' },
   { value: 'unavailable', label: '不可用' },
@@ -225,7 +225,9 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
                     </span>
                   </td>
                   <td>
-                    <Toggle checked={item.is_active} onChange={(checked) => handleToggleMappingActive(item, checked)} />
+                    <div className="toggle-wrap">
+                      <Toggle checked={item.is_active} onChange={(checked) => handleToggleMappingActive(item, checked)} />
+                    </div>
                   </td>
                   <td>
                     <button className="ant-btn" style={{ marginRight: 8 }} onClick={() => openEdit(item)}>编辑</button>
@@ -266,16 +268,11 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
         </div>
         <div className="form-field">
           <label className="form-label">协议</label>
-          <select
-            className="form-select ant-input"
-            value={form.protocols}
-            onChange={(e) => setForm({ ...form, protocols: e.target.value })}
-          >
-            <option value="">不限</option>
-            {PROTOCOL_OPTIONS.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
+          <Checkbox.Group
+            value={form.protocols ? form.protocols.split(',').filter(Boolean) : []}
+            onChange={(checked) => setForm({ ...form, protocols: checked.join(',') })}
+            options={PROTOCOL_OPTIONS.map((p) => ({ label: p, value: p }))}
+          />
         </div>
         <div className="form-row">
           <div className="form-field">
@@ -501,7 +498,9 @@ function Models() {
                   <td>{m.timeout}s</td>
                   <td>{m.context_length.toLocaleString()}</td>
                   <td>
-                    <Toggle checked={m.is_active} onChange={(checked) => handleToggleActive(m, checked)} />
+                    <div className="toggle-wrap">
+                      <Toggle checked={m.is_active} onChange={(checked) => handleToggleActive(m, checked)} />
+                    </div>
                   </td>
                   <td>
                     <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openEdit(m); }}>编辑</button>

@@ -1,2 +1,2 @@
-pub mod admin_handler;
+pub mod admin;
 pub mod chat_handler;

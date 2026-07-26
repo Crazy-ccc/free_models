@@ -66,7 +66,7 @@
 
 ### 缓存机制
 
-- **Redis 层：** 使用 Redis Set `api_keys:active` 存储所有活跃 API Key
+- **Redis 层：** 使用 Redis Set `app:api_keys:active` 存储所有活跃 API Key
 - **内存层：** 启动时全量加载到 `HashSet<String>`，作为 Redis 不可用时的 fallback
 - **刷新：** 调用 `POST /admin/cache/refresh` 重新从数据库加载
 
@@ -100,16 +100,16 @@ API Key 缓存位于 [api_key_cache.rs](file:///d:/workspace/trae/free_models_to
 
 ```rust
 pub async fn contains(&self, key: &str) -> bool {
-    match self.redis.sismember(&self.redis_key, key).await {
+    match self.cache_store.sismember(&self.redis_key, key).await {
         Ok(true) => true,
         Ok(false) => {
-            if self.redis.is_available() {
+            if self.cache_store.is_available() {
                 false  // Redis 确认不存在
             } else {
-                self.fallback.lock().unwrap().contains(key)  // Redis 不可用时查内存
+                self.fallback.lock().unwrap().contains(key)
             }
         }
-        Err(_) => self.fallback.lock().unwrap().contains(key),  // Redis 异常时查内存
+        Err(_) => self.fallback.lock().unwrap().contains(key),
     }
 }
 ```

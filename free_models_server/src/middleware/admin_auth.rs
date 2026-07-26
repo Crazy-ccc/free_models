@@ -9,10 +9,25 @@ use actix_web::{web, Error, HttpResponse};
 use base64::Engine;
 use ed25519_dalek::Verifier;
 use futures_util::future::LocalBoxFuture;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-
-use crate::db::entities::admin_key;
 use crate::AppState;
+
+fn auth_response(
+    req: ServiceRequest,
+    msg: impl Into<String>,
+    builder: fn() -> actix_web::HttpResponseBuilder,
+) -> ServiceResponse<BoxBody> {
+    let msg = msg.into();
+    req.into_response(builder().json(serde_json::json!({"error": msg})))
+        .map_into_boxed_body()
+}
+
+fn require_header(req: &ServiceRequest, name: &str) -> Result<String, ()> {
+    req.headers()
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_string())
+        .ok_or(())
+}
 
 pub struct AdminAuthMiddleware;
 
@@ -53,55 +68,19 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        let fingerprint = match req
-            .headers()
-            .get("X-Admin-Fingerprint")
-            .and_then(|v| v.to_str().ok())
-        {
-            Some(v) => v.to_string(),
-            None => {
-                return Box::pin(async move {
-                    Ok(req
-                        .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                            "error": "Missing X-Admin-Fingerprint header"
-                        })))
-                        .map_into_boxed_body())
-                });
-            }
+        let fingerprint = match require_header(&req, "X-Admin-Fingerprint") {
+            Ok(v) => v,
+            Err(()) => return Box::pin(async move { Ok(auth_response(req, "Missing X-Admin-Fingerprint header", HttpResponse::Unauthorized)) }),
         };
 
-        let timestamp_str = match req
-            .headers()
-            .get("X-Admin-Timestamp")
-            .and_then(|v| v.to_str().ok())
-        {
-            Some(v) => v.to_string(),
-            None => {
-                return Box::pin(async move {
-                    Ok(req
-                        .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                            "error": "Missing X-Admin-Timestamp header"
-                        })))
-                        .map_into_boxed_body())
-                });
-            }
+        let timestamp_str = match require_header(&req, "X-Admin-Timestamp") {
+            Ok(v) => v,
+            Err(()) => return Box::pin(async move { Ok(auth_response(req, "Missing X-Admin-Timestamp header", HttpResponse::Unauthorized)) }),
         };
 
-        let signature = match req
-            .headers()
-            .get("X-Admin-Signature")
-            .and_then(|v| v.to_str().ok())
-        {
-            Some(v) => v.to_string(),
-            None => {
-                return Box::pin(async move {
-                    Ok(req
-                        .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                            "error": "Missing X-Admin-Signature header"
-                        })))
-                        .map_into_boxed_body())
-                });
-            }
+        let signature = match require_header(&req, "X-Admin-Signature") {
+            Ok(v) => v,
+            Err(()) => return Box::pin(async move { Ok(auth_response(req, "Missing X-Admin-Signature header", HttpResponse::Unauthorized)) }),
         };
 
         let nonce = req
@@ -118,57 +97,26 @@ where
 
         let timestamp: u64 = match timestamp_str.parse() {
             Ok(t) => t,
-            Err(_) => {
-                return Box::pin(async move {
-                    Ok(req
-                        .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                            "error": "Invalid timestamp"
-                        })))
-                        .map_into_boxed_body())
-                });
-            }
+            Err(_) => return Box::pin(async move { Ok(auth_response(req, "Invalid timestamp", HttpResponse::Unauthorized)) }),
         };
 
         let now = chrono::Utc::now().timestamp() as u64;
         if now.saturating_sub(timestamp) > 300 {
-            return Box::pin(async move {
-                Ok(req
-                    .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                        "error": "Timestamp expired"
-                    })))
-                    .map_into_boxed_body())
-            });
+            return Box::pin(async move { Ok(auth_response(req, "Timestamp expired", HttpResponse::Unauthorized)) });
         }
 
         if let Some(ref n) = nonce {
             let mut cache = self.used_nonces.borrow_mut();
-            // Clean expired entries (older than 300s)
             cache.retain(|_, ts| now.saturating_sub(*ts) <= 300);
             if cache.contains_key(n) {
-                return Box::pin(async move {
-                    Ok(req
-                        .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                            "error": "Nonce already used"
-                        })))
-                        .map_into_boxed_body())
-                });
+                return Box::pin(async move { Ok(auth_response(req, "Nonce already used", HttpResponse::Unauthorized)) });
             }
             cache.insert(n.clone(), now);
         }
 
-        let db = match req.app_data::<web::Data<AppState>>() {
-            Some(state) => state.db.clone(),
-            None => {
-                return Box::pin(async move {
-                    Ok(req
-                        .into_response(HttpResponse::InternalServerError().json(
-                            serde_json::json!({
-                                "error": "Database not available"
-                            }),
-                        ))
-                        .map_into_boxed_body())
-                });
-            }
+        let admin_keys = match req.app_data::<web::Data<AppState>>() {
+            Some(state) => state.database.admin_keys.clone(),
+            None => return Box::pin(async move { Ok(auth_response(req, "Database not available", HttpResponse::InternalServerError)) }),
         };
 
         let method = req.method().to_string();
@@ -178,94 +126,44 @@ where
         let service = self.service.clone();
 
         Box::pin(async move {
-            let admin_record = match admin_key::Entity::find()
-                .filter(admin_key::Column::Fingerprint.eq(&fingerprint))
-                .filter(admin_key::Column::IsActive.eq(true))
-                .one(&db)
-                .await
-            {
+            let admin_record = match admin_keys.find_active_by_fingerprint(&fingerprint).await {
                 Ok(Some(record)) => record,
-                Ok(None) => {
-                    return Ok(req
-                        .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                            "error": "Invalid fingerprint"
-                        })))
-                        .map_into_boxed_body());
-                }
+                Ok(None) => return Ok(auth_response(req, "Invalid fingerprint", HttpResponse::Unauthorized)),
                 Err(e) => {
-                    eprintln!("Database error in admin auth: {}", e);
-                    return Ok(req
-                        .into_response(HttpResponse::InternalServerError().json(
-                            serde_json::json!({
-                                "error": "Database error"
-                            }),
-                        ))
-                        .map_into_boxed_body());
+                    log::error!("Database error in admin auth: {}", e);
+                    return Ok(auth_response(req, "Database error", HttpResponse::InternalServerError));
                 }
             };
 
             let raw_pubkey = match parse_openssh_ed25519_pubkey(&admin_record.public_key) {
                 Some(key) => key,
-                None => {
-                    return Ok(req
-                        .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                            "error": "Invalid public key format"
-                        })))
-                        .map_into_boxed_body());
-                }
+                None => return Ok(auth_response(req, "Invalid public key format", HttpResponse::Unauthorized)),
             };
 
             let payload = format!("{}:{}:{}:{}:{}", method, path, timestamp, nonce_part, body_hash_part);
-            let signature_bytes = match base64::engine::general_purpose::STANDARD.decode(&signature)
-            {
+            let signature_bytes = match base64::engine::general_purpose::STANDARD.decode(&signature) {
                 Ok(b) => b,
-                Err(_) => {
-                    return Ok(req
-                        .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                            "error": "Invalid signature encoding"
-                        })))
-                        .map_into_boxed_body());
-                }
+                Err(_) => return Ok(auth_response(req, "Invalid signature encoding", HttpResponse::Unauthorized)),
             };
 
             if signature_bytes.len() != 64 {
-                return Ok(req
-                    .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                        "error": "Invalid signature length"
-                    })))
-                    .map_into_boxed_body());
+                return Ok(auth_response(req, "Invalid signature length", HttpResponse::Unauthorized));
             }
 
             let verifying_key = match ed25519_dalek::VerifyingKey::from_bytes(&raw_pubkey) {
                 Ok(k) => k,
-                Err(_) => {
-                    return Ok(req
-                        .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                            "error": "Invalid public key"
-                        })))
-                        .map_into_boxed_body());
-                }
+                Err(_) => return Ok(auth_response(req, "Invalid public key", HttpResponse::Unauthorized)),
             };
 
             let signature_array: [u8; 64] = match signature_bytes.try_into() {
                 Ok(arr) => arr,
-                Err(_) => {
-                    return Ok(req
-                        .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                            "error": "Invalid signature length"
-                        })))
-                        .map_into_boxed_body());
-                }
+                Err(_) => return Ok(auth_response(req, "Invalid signature length", HttpResponse::Unauthorized)),
             };
 
             let sig = ed25519_dalek::Signature::from_bytes(&signature_array);
 
             if verifying_key.verify(payload.as_bytes(), &sig).is_err() {
-                return Ok(req
-                    .into_response(HttpResponse::Unauthorized().json(serde_json::json!({
-                        "error": "Signature verification failed"
-                    })))
-                    .map_into_boxed_body());
+                return Ok(auth_response(req, "Signature verification failed", HttpResponse::Unauthorized));
             }
 
             let res = service.call(req).await?;

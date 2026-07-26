@@ -12,17 +12,17 @@
 handle_chat_request (chat_handler.rs)
     │
     ├─ 校验 messages 字段非空
-    ├─ 获取可用模型列表（ModelCache / DB）
+    ├─ 获取可用模型列表（SchedulerCache / DB）
     ├─ 按协议筛选（openai / anthropic）
     ├─ 指定模型排到最前（merge_preferred_first）
-    ├─ 惩罚排序（sort_penalized_last）
+    ├─ 惩罚排序（CircuitBreaker::sort_penalized_last）
     ├─ Token 估算 + 上下文窗口过滤
     │
     └─ proxy_chat_completion_inner
         └─ 遍历模型列表
             ├─ forward_to_provider
             │   ├─ 构建 URL: {base_url.trim_end('/')}{protocol.path()}
-            │   ├─ 替换 model: body["model"] = model_info.model_id
+            │   ├─ 替换 model: body["model"] = model_info.provider_model_id
             │   ├─ 设置 stream_options (OpenAI SSE)
             │   ├─ 设置认证头:
             │   │   ├─ OpenAI: Bearer {api_key}
@@ -33,28 +33,28 @@ handle_chat_request (chat_handler.rs)
             │       └─ 4xx/5xx/超时/网络错 → ForwardOutcome::Retry
             │
             ├─ Success → handle_stream_response / handle_non_stream_response
-            ├─ Retry → penalty.penalize → continue
+            ├─ Retry → CircuitBreaker::penalize → continue
             └─ 全部失败 → 503 + 记录 failed 用量日志
 ```
 
 ### ModelProviderInfo
 
-转发会话中使用的完整模型+供应商+凭证信息：
+转发会话中使用的完整模型+供应商+凭证信息，定义在 [model_scheduler.rs](file:///d:/workspace/trae/free_models_token/free_models_server/src/util/model_scheduler.rs)：
 
 ```rust
 pub struct ModelProviderInfo {
-    pub model_name: String,        // 模型对外名称
-    pub model_id: String,          // 上游 API 实际 model 值
-    pub model_config_id: i32,      // 模型配置 ID
-    pub provider_config_id: i32,   // 供应商 ID
-    pub provider_name: String,     // 供应商名称
-    pub base_url: String,          // 供应商基础 URL
-    pub api_key: String,           // 解密后的 API Key
-    pub provider_credential_id: i32, // 使用的凭证 ID
-    pub priority: i32,             // 优先级
-    pub timeout: u64,              // 超时秒数
-    pub protocols: String,         // 支持的协议
-    pub context_length: i32,       // 上下文窗口
+    pub model_name: String,           // 模型对外名称
+    pub model_id: String,             // 上游 API 实际 model 值
+    pub model_config_id: i32,         // 模型配置 ID
+    pub provider_config_id: i32,      // 供应商 ID
+    pub provider_name: String,        // 供应商名称
+    pub base_url: String,             // 供应商基础 URL
+    pub api_key: String,              // 解密后的 API Key
+    pub provider_credential_id: i32,  // 使用的凭证 ID
+    pub priority: i32,                // 优先级
+    pub timeout: u64,                 // 超时秒数
+    pub protocols: String,            // 支持的协议
+    pub context_length: i32,          // 上下文窗口
 }
 ```
 
@@ -113,7 +113,7 @@ actix_web::rt::spawn(async move {
 });
 ```
 
-**非流式响应** 直接等待完整响应后解析 `usage` 字段写入日志。
+**非流式响应** 直接等待完整响应后解析 `usage` 字段，通过 `UsageLogCollector` 异步写入。
 
 ### 故障切换与惩罚
 
@@ -121,7 +121,7 @@ actix_web::rt::spawn(async move {
 
 ```rust
 ForwardOutcome::Retry => {
-    penalty.penalize(&model_info.model_name, &model_info.provider_name).await;
+    circuit_breaker.penalize(&model_info.model_name, &model_info.provider_name).await;
     continue;
 }
 ```
@@ -163,7 +163,7 @@ pub fn estimate_prompt_tokens(text: &str) -> usize {
 ### 用途
 
 1. **上下文窗口校验：** 转发请求前，估算 prompt 的 token 数，与模型的 `context_length` 对比，过滤掉窗口不足的模型
-2. **用量日志记录：** 请求完成后，从上游响应中读取实际的 usage 数据写入 `usage_log` 表
+2. **用量日志记录：** 请求完成后，从上游响应中读取实际的 usage 数据，通过 `UsageLogCollector` 异步写入
 
 ### 验证超长 Prompt
 
@@ -196,13 +196,18 @@ if models.is_empty() {
 | cache_hit_tokens | `usage.prompt_tokens_details.cached_tokens.prompt_cache_hit_tokens` | `usage.cache_read_input_tokens` |
 | cache_miss_tokens | `prompt_tokens - cached_tokens` | `input_tokens` |
 
-日志写入使用 `actix_web::rt::spawn` 在后台异步执行，不阻塞主请求流程。
+日志写入使用 `UsageLogCollector`（异步批量收集器）在后台执行，不阻塞主请求流程：
+- 流式请求：在 SSE 流中检测到 `usage` 字段时提交到 collector
+- 非流式请求：从上游响应解析后提交到 collector
+- collector 内部批量写入 `UsageLogStore`
 
 ### 代码位置
 
 | 功能 | 文件 |
 |------|------|
 | Token 估算 | [tokenizer.rs](file:///d:/workspace/trae/free_models_token/free_models_server/src/util/tokenizer.rs) |
+| 模型调度 | [model_scheduler.rs](file:///d:/workspace/trae/free_models_token/free_models_server/src/util/model_scheduler.rs) |
 | 用量提取 | [proxy_service.rs](file:///d:/workspace/trae/free_models_token/free_models_server/src/service/proxy_service.rs)（`Protocol::extract_usage`） |
 | 上下文校验 | [chat_handler.rs](file:///d:/workspace/trae/free_models_token/free_models_server/src/handler/chat_handler.rs) |
-| 用量日志写入 | [usage_log_service.rs](file:///d:/workspace/trae/free_models_token/free_models_server/src/service/usage_log_service.rs) |
+| 用量日志收集 | [usage_log_collector.rs](file:///d:/workspace/trae/free_models_token/free_models_server/src/util/usage_log_collector.rs) |
+| 用量日志持久化 | [usage_log_service.rs](file:///d:/workspace/trae/free_models_token/free_models_server/src/service/usage_log_service.rs) + [UsageLogStore](file:///d:/workspace/trae/free_models_token/free_models_server/free_models_store_api/src/stores/mod.rs) |

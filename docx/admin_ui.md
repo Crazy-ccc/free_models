@@ -19,6 +19,7 @@ free_models_manager/
 │   │   └── Toggle.tsx/less      # 开关组件
 │   ├── pages/                   # 页面
 │   │   ├── Overview.tsx/less    # 概览仪表盘
+│   │   ├── Stats.tsx/less       # 使用统计
 │   │   ├── Providers.tsx/less   # 供应商管理
 │   │   ├── Models.tsx/less      # 模型管理
 │   │   ├── ApiKeys.tsx/less     # API Key 管理
@@ -46,6 +47,7 @@ Tauri 后端提供三项核心能力：
 | 路径 | 页面 | 功能 |
 |------|------|------|
 | `/` | Overview | 概览仪表盘，显示统计信息 |
+| `/stats` | Stats | 使用统计，多维度分组查询 |
 | `/providers` | Providers | 供应商 CRUD + 一键导入模型 + 凭证管理 |
 | `/models` | Models | 模型列表（只读状态 + 筛选） |
 | `/api-keys` | ApiKeys | API Key CRUD（自动生成密钥） |
@@ -170,7 +172,7 @@ Tauri 后端提供三项核心能力：
 文件：[Sidebar.tsx](file:///d:/workspace/trae/free_models_token/free_models_manager/src/components/Sidebar.tsx)
 
 - 垂直导航布局
-- 导航项：概览、供应商、模型、API Keys、设置
+- 导航项：概览、供应商、模型、API Keys、统计、设置
 - 当前选中项高亮
 
 ### Drawer（抽屉）

@@ -412,6 +412,115 @@ Content-Type: application/json
 DELETE /admin/provider_credentials/{id}
 ```
 
+### 使用统计
+
+```
+GET /admin/usage/stats?group_by=<维度>&start_time=<ISO>&end_time=<ISO>
+```
+
+获取使用量统计数据，支持多维度分组和时间筛选。
+
+**查询参数：**
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `group_by` | 是 | 分组维度：`provider` / `credential` / `model` / `api_key` / `day` |
+| `start_time` | 否 | 开始时间（ISO 格式），用于时间范围筛选 |
+| `end_time` | 否 | 结束时间（ISO 格式） |
+
+**响应示例：**
+```json
+{
+    "items": [
+        {
+            "dimension_name": "供应商名称",
+            "requests": 120,
+            "prompt_tokens": 50000,
+            "completion_tokens": 30000,
+            "total_tokens": 80000,
+            "cache_hit_tokens": 20000,
+            "cache_miss_tokens": 60000,
+            "avg_duration_ms": 1500.5,
+            "max_duration_ms": 5000.0
+        }
+    ],
+    "total": {
+        "requests": 120,
+        "prompt_tokens": 50000,
+        "completion_tokens": 30000,
+        "total_tokens": 80000,
+        "avg_duration_ms": 1500.5
+    }
+}
+```
+
+### 管理员公钥管理
+
+#### 列出所有公钥
+
+```
+GET /admin/admin_keys
+```
+
+#### 创建公钥
+
+```
+POST /admin/admin_keys
+Content-Type: application/json
+
+{
+    "name": "My Key",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...",
+    "is_active": true
+}
+```
+
+服务端会自动解析公钥计算 SHA256 指纹并回填到 `fingerprint` 字段。
+
+#### 更新公钥
+
+```
+PUT /admin/admin_keys/{id}
+Content-Type: application/json
+
+{
+    "name": "My Key",
+    "is_active": true
+}
+```
+
+#### 删除公钥
+
+```
+DELETE /admin/admin_keys/{id}
+```
+
+### 供应商模型映射管理
+
+#### 列出映射
+
+```
+GET /admin/provider_model_maps?provider_id={id}
+```
+
+#### 创建映射
+
+```
+POST /admin/provider_model_maps
+Content-Type: application/json
+
+{
+    "provider_id": 1,
+    "model_id": "gpt-3.5-turbo",
+    "remote_model_id": "gpt-3.5-turbo-0125"
+}
+```
+
+#### 删除映射
+
+```
+DELETE /admin/provider_model_maps/{id}
+```
+
 ### 测试凭证连接
 
 ```

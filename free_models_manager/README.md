@@ -71,6 +71,16 @@ pnpm tauri build
 | 编辑 | 可修改名称和状态 |
 | 删除 | 二次确认弹框 |
 
+### 统计
+
+调用 `GET /admin/usage/stats` 获取使用量统计数据，支持多维度分组查询：
+
+| 功能 | 说明 |
+|------|------|
+| 分组维度 | 按供应商 / 凭证 / 模型 / API Key / 按天 |
+| 时间筛选 | 可选开始和结束日期 |
+| 汇总行 | 总请求数、总 Token 数、Prompt Tokens、Completion Tokens、平均耗时 |
+
 ### 设置
 
 - 配置 Ed25519 私钥/公钥路径，加载后显示 Fingerprint
@@ -100,6 +110,7 @@ free_models_manager/
 │   │   └── Toggle.tsx/less     # 开关组件
 │   └── pages/
 │       ├── Overview.tsx/less    # 概览仪表盘
+│       ├── Stats.tsx/less       # 使用统计（多维度分组查询）
 │       ├── Providers.tsx/less   # 供应商管理
 │       ├── Models.tsx/less      # 模型管理
 │       ├── ApiKeys.tsx/less     # API Key 管理

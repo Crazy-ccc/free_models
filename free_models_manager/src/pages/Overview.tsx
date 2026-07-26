@@ -8,6 +8,12 @@ interface OverviewProps {
   onStatusChange?: (connected: boolean) => void;
 }
 
+function formatTokens(n: number): string {
+  if (n < 1000) return n.toString();
+  if (n < 1_000_000) return (n / 1000).toFixed(1) + 'K';
+  return (n / 1_000_000).toFixed(1) + 'M';
+}
+
 function Overview({ onStatusChange }: OverviewProps) {
   const [status, setStatus] = useState<ServiceStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -126,10 +132,10 @@ function Overview({ onStatusChange }: OverviewProps) {
                         <td>{parts[0]}</td>
                         <td>{parts[1]}</td>
                         <td>{item.requests}</td>
-                        <td>{item.prompt_tokens.toLocaleString()}</td>
-                        <td>{item.completion_tokens.toLocaleString()}</td>
-                        <td>{item.total_tokens.toLocaleString()}</td>
-                        <td>{item.cache_hit_tokens.toLocaleString()}</td>
+                        <td>{formatTokens(item.prompt_tokens)}</td>
+                        <td>{formatTokens(item.completion_tokens)}</td>
+                        <td>{formatTokens(item.total_tokens)}</td>
+                        <td>{formatTokens(item.cache_hit_tokens)}</td>
                         <td>{hitRate}%</td>
                       </tr>
                     );

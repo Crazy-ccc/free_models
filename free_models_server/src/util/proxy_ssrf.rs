@@ -17,11 +17,12 @@ pub(crate) async fn validate_url_safe(url: &str) -> Result<(), String> {
         return Err("URL has no host".to_string());
     }
 
-    if let Ok(addrs) = tokio::net::lookup_host((host, 0)).await {
-        for addr in addrs {
-            if is_private_ip(addr.ip()) {
-                return Err(format!("Target URL resolves to a private IP: {}", addr.ip()));
-            }
+    let addrs = tokio::net::lookup_host((host, 0))
+        .await
+        .map_err(|e| format!("DNS resolution failed: {}", e))?;
+    for addr in addrs {
+        if is_private_ip(addr.ip()) {
+            return Err(format!("Target URL resolves to a private IP: {}", addr.ip()));
         }
     }
 

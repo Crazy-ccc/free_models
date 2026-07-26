@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { CopyOutlined } from '@ant-design/icons';
-import { Modal } from 'antd';
+import { message, Modal } from 'antd';
 import Toolbar from '../components/Toolbar';
 import Toggle from '../components/Toggle';
 import Drawer from '../components/Drawer';
@@ -143,6 +143,7 @@ function ApiKeys() {
     e.stopPropagation();
     if (key) {
       navigator.clipboard.writeText(key);
+      message.success('已复制到剪贴板');
     }
   };
 
@@ -179,7 +180,9 @@ function ApiKeys() {
                     />
                   </td>
                   <td>
-                    <Toggle checked={k.is_active} onChange={(checked) => handleToggleActive(k, checked)} />
+                    <div className="toggle-wrap">
+                      <Toggle checked={k.is_active} onChange={(checked) => handleToggleActive(k, checked)} />
+                    </div>
                   </td>
                   <td className="api-keys-time">{formatTime(k.created_time)}</td>
                   <td>
@@ -217,7 +220,7 @@ function ApiKeys() {
                 className="ant-input"
                 type={showKeyValue ? 'text' : 'password'}
                 value={formKeyValue}
-                onChange={(e) => setFormKeyValue(e.target.value)}
+                disabled
                 placeholder="输入 Key Value"
               />
               <button

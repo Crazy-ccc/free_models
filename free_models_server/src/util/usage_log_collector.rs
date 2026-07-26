@@ -1,13 +1,14 @@
-use sea_orm::DatabaseConnection;
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-use crate::service::usage_log_service;
-use crate::util::model_scheduler::ModelProviderInfo;
-use crate::util::proxy_types::{Protocol, UsageInfo};
+use crate::db::types::UsageLogInsert;
+use crate::db::impls::UsageLogStoreSeaorm;
 
-static USAGE_LOG_SENDER: OnceLock<mpsc::Sender<usage_log_service::UsageLogInsert>> = OnceLock::new();
+use crate::util::model_scheduler::{CredentialInfo, ModelProviderMap, ModelScheduleInfo};
+use crate::util::proxy_types::{ApiKeyContext, LogContext};
+
+static USAGE_LOG_SENDER: OnceLock<mpsc::Sender<UsageLogInsert>> = OnceLock::new();
 
 /// 后台收集 usage_log 并批量写入
 pub struct UsageLogCollector {
@@ -23,19 +24,29 @@ impl UsageLogCollector {
 }
 
 /// 初始化 usage_log 批量收集器，在 main.rs 启动时调用
-pub fn init_usage_log_collector(db: DatabaseConnection) -> UsageLogCollector {
-    let (tx, rx) = mpsc::channel::<usage_log_service::UsageLogInsert>(256);
+pub fn init_usage_log_collector(store: UsageLogStoreSeaorm) -> UsageLogCollector {
+    let (tx, rx) = mpsc::channel::<UsageLogInsert>(256);
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     USAGE_LOG_SENDER
         .set(tx.clone())
         .expect("UsageLogCollector already initialized");
-    let handle = tokio::spawn(run_collector(db, rx, shutdown_rx));
+    let handle = tokio::spawn(run_collector(store, rx, shutdown_rx));
     UsageLogCollector { shutdown_tx, handle }
 }
 
+async fn flush_buffer(store: &UsageLogStoreSeaorm, buf: &mut Vec<UsageLogInsert>) {
+    if buf.is_empty() {
+        return;
+    }
+    if let Err(e) = store.create_batch(buf).await {
+        log::error!("Failed to batch insert usage logs: {}", e);
+    }
+    buf.clear();
+}
+
 async fn run_collector(
-    db: DatabaseConnection,
-    mut rx: mpsc::Receiver<usage_log_service::UsageLogInsert>,
+    store: UsageLogStoreSeaorm,
+    mut rx: mpsc::Receiver<UsageLogInsert>,
     mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     let batch_size = 10;
@@ -51,60 +62,44 @@ async fn run_collector(
                     None => break,
                 }
                 if buffer.len() >= batch_size {
-                    if let Err(e) = usage_log_service::create_batch(&db, &buffer).await {
-                        log::error!("Failed to batch insert usage logs: {}", e);
-                    }
-                    buffer.clear();
+                    flush_buffer(&store, &mut buffer).await;
                 }
             }
             _ = interval.tick() => {
-                if !buffer.is_empty() {
-                    if let Err(e) = usage_log_service::create_batch(&db, &buffer).await {
-                        log::error!("Failed to batch insert usage logs: {}", e);
-                    }
-                    buffer.clear();
-                }
+                flush_buffer(&store, &mut buffer).await;
             }
             _ = shutdown_rx.changed() => break,
         }
     }
 
-    if !buffer.is_empty() {
-        if let Err(e) = usage_log_service::create_batch(&db, &buffer).await {
-            log::error!("Failed to batch insert usage logs: {}", e);
-        }
-    }
+    flush_buffer(&store, &mut buffer).await;
 }
 
 pub(crate) fn spawn_usage_log(
-    model_info: &ModelProviderInfo,
-    api_key_id: Option<i32>,
-    api_key_name: Option<&str>,
-    protocol: Protocol,
-    duration_ms: i32,
-    is_stream: bool,
-    info: UsageInfo,
-    status: &str,
-    error_message: Option<&str>,
+    model_info: &ModelScheduleInfo,
+    map: &ModelProviderMap,
+    cred: &CredentialInfo,
+    api_key_ctx: &ApiKeyContext,
+    log_ctx: &LogContext,
 ) {
-    let record = usage_log_service::UsageLogInsert {
-        api_key_id,
-        api_key_name: api_key_name.map(|s| s.to_string()),
+    let record = UsageLogInsert {
+        api_key_id: api_key_ctx.id,
+        api_key_name: api_key_ctx.name.clone(),
         model_config_id: model_info.model_config_id,
-        provider_config_id: model_info.provider_config_id,
-        provider_credential_id: model_info.provider_credential_id,
+        provider_config_id: map.provider_config_id,
+        provider_credential_id: cred.provider_credential_id,
         model_name: model_info.model_name.clone(),
-        provider_name: model_info.provider_name.clone(),
-        protocol: protocol.as_str().to_string(),
-        status: status.to_string(),
-        error_message: error_message.map(|s| s.to_string()),
-        prompt_tokens: info.prompt_tokens,
-        completion_tokens: info.completion_tokens,
-        total_tokens: info.total_tokens,
-        cache_hit_tokens: info.cache_hit_tokens,
-        cache_miss_tokens: info.cache_miss_tokens,
-        duration_ms,
-        is_stream,
+        provider_name: map.provider_name.clone(),
+        protocol: log_ctx.protocol.as_str().to_string(),
+        status: log_ctx.status.clone(),
+        error_message: log_ctx.error_message.clone(),
+        prompt_tokens: log_ctx.info.prompt_tokens,
+        completion_tokens: log_ctx.info.completion_tokens,
+        total_tokens: log_ctx.info.total_tokens,
+        cache_hit_tokens: log_ctx.info.cache_hit_tokens,
+        cache_miss_tokens: log_ctx.info.cache_miss_tokens,
+        duration_ms: log_ctx.duration_ms,
+        is_stream: log_ctx.is_stream,
     };
 
     if let Some(tx) = USAGE_LOG_SENDER.get() {

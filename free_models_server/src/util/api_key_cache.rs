@@ -1,87 +1,91 @@
 use std::collections::HashSet;
-use std::sync::Mutex;
+use std::sync::Arc;
 
-use sea_orm::{DatabaseConnection};
-
-use crate::db::redis::RedisManager;
-use crate::service::api_key_service;
+use crate::db::impls::ApiKeyStoreSeaorm;
+use crate::cache::RedisManager;
 
 pub struct ApiKeyCache {
-    redis: RedisManager,
-    fallback: Mutex<HashSet<String>>,
+    cache_store: Arc<RedisManager>,
+    fallback: moka::sync::Cache<String, ()>,
     redis_key: String,
 }
 
 impl Clone for ApiKeyCache {
     fn clone(&self) -> Self {
-        let fallback = self.fallback.lock().unwrap().clone();
         ApiKeyCache {
-            redis: self.redis.clone(),
-            fallback: Mutex::new(fallback),
+            cache_store: self.cache_store.clone(),
+            fallback: self.fallback.clone(),
             redis_key: self.redis_key.clone(),
         }
     }
 }
 
 impl ApiKeyCache {
-    /// 从数据库一次性加载所有 is_active = true 的 key_value
-    pub async fn load_all(db: &DatabaseConnection, redis: RedisManager) -> Self {
-        let keys = api_key_service::load_active_keys(db).await;
+    pub async fn load_all(api_key_store: &ApiKeyStoreSeaorm, cache_store: Arc<RedisManager>, max_capacity: u64) -> Self {
+        let keys = api_key_store.load_active_keys().await.unwrap_or_else(|e| {
+            log::warn!("Failed to load active api keys: {}", e);
+            HashSet::new()
+        });
 
-        let keys_vec: Vec<String> = keys.iter().cloned().collect();
+        let fallback = moka::sync::Cache::builder().max_capacity(max_capacity).build();
+        for k in &keys { fallback.insert(k.clone(), ()); }
 
-        if redis.is_available() {
-            if let Err(e) = redis.del("api_keys:active").await {
-                log::warn!("Failed to del Redis key api_keys:active: {}", e);
-            }
-            if let Err(e) = redis.sadd("api_keys:active", &keys_vec).await {
-                log::warn!("Failed to sadd Redis key api_keys:active: {}", e);
-            }
-        }
+        let this = ApiKeyCache {
+            cache_store,
+            fallback,
+            redis_key: "app:free_models:api_keys:active".to_string(),
+        };
+        this.sync_to_redis(&keys).await;
 
         log::info!("Loaded {} active api keys into cache", keys.len());
 
-        ApiKeyCache {
-            redis,
-            fallback: Mutex::new(keys),
-            redis_key: "api_keys:active".to_string(),
-        }
+        this
     }
 
-    /// 检查 key 是否存在于缓存中
     pub async fn contains(&self, key: &str) -> bool {
-        match self.redis.sismember(&self.redis_key, key).await {
+        match self.cache_store.sismember(&self.redis_key, key).await {
             Ok(true) => true,
             Ok(false) => {
-                if self.redis.is_available() {
+                if self.cache_store.is_available() {
                     false
                 } else {
-                    self.fallback.lock().unwrap().contains(key)
+                    self.fallback.contains_key(key)
                 }
             }
-            Err(_) => self.fallback.lock().unwrap().contains(key),
+            Err(_) => self.fallback.contains_key(key),
         }
     }
 
-    /// 重新从数据库加载并刷新缓存
-    pub async fn refresh(&self, db: &DatabaseConnection) {
-        let keys = api_key_service::load_active_keys(db).await;
-
-        let mut fallback = self.fallback.lock().unwrap();
-        *fallback = keys.clone();
-        let fallback_len = fallback.len();
-        drop(fallback);
-
-        if self.redis.is_available() {
-            if let Err(e) = self.redis.del(&self.redis_key).await {
-                log::warn!("Failed to del Redis key {}: {}", self.redis_key, e);
+    pub async fn refresh(&self, api_key_store: &ApiKeyStoreSeaorm) {
+        let keys = match api_key_store.load_active_keys().await {
+            Ok(k) => k,
+            Err(e) => {
+                log::warn!("Failed to load active api keys: {}", e);
+                return;
             }
-            let keys_vec: Vec<String> = keys.iter().cloned().collect();
-            if let Err(e) = self.redis.sadd(&self.redis_key, &keys_vec).await {
-                log::warn!("Failed to sadd Redis key {}: {}", self.redis_key, e);
-            }
-        }
+        };
+
+        // 注意：invalidate_all 与重新插入之间非原子，期间 contains 对有效 key 会返回 false。
+        // 该 fallback 仅在 Redis 不可用时被查询，且 refresh 由管理员操作触发（罕见，非热路径），影响可接受。
+        // 如需严格原子替换，可构造新 Cache 并通过 ArcSwap 原子交换。
+        self.fallback.invalidate_all();
+        for k in &keys { self.fallback.insert(k.clone(), ()); }
+        let fallback_len = keys.len();
+
+        self.sync_to_redis(&keys).await;
 
         log::info!("Refreshed {} active api keys into cache", fallback_len);
+    }
+
+    async fn sync_to_redis(&self, keys: &HashSet<String>) {
+        if self.cache_store.is_available() {
+            if let Err(e) = self.cache_store.del(&self.redis_key).await {
+                log::warn!("Failed to del cache key {}: {}", self.redis_key, e);
+            }
+            let keys_vec: Vec<String> = keys.iter().cloned().collect();
+            if let Err(e) = self.cache_store.sadd(&self.redis_key, &keys_vec).await {
+                log::warn!("Failed to sadd cache key {}: {}", self.redis_key, e);
+            }
+        }
     }
 }

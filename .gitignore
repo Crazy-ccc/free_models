@@ -4,6 +4,7 @@
 # free_models_server
 /free_models_server/.idea
 /free_models_server/target
+/free_models_server/*/target
 /free_models_server/.env
 
 # free_models_manager

@@ -2,20 +2,20 @@ use std::time::Duration;
 
 use actix_web::web;
 use reqwest::Client;
-use sea_orm::DatabaseConnection;
 
-use crate::db::redis::RedisManager;
+use crate::db::Database;
 use crate::util::api_key_cache::ApiKeyCache;
+use crate::util::cache_affinity::CacheAffinity;
 use crate::util::model_scheduler::SchedulerCache;
-use crate::util::penalty::PriorityPenalty;
+use crate::util::penalty::CircuitBreaker;
 
 pub struct AppState {
-    pub db: DatabaseConnection,
+    pub database: Database,
     pub scheduler_cache: SchedulerCache,
     pub client: Client,
-    pub priority_penalty: web::Data<PriorityPenalty>,
-    pub redis: RedisManager,
+    pub priority_penalty: web::Data<CircuitBreaker>,
     pub api_key_cache: ApiKeyCache,
+    pub cache_affinity: CacheAffinity,
     pub encryption_key: [u8; 32],
 }
 
@@ -24,6 +24,7 @@ pub fn build_client() -> Client {
         .pool_max_idle_per_host(20)
         .pool_idle_timeout(Duration::from_secs(90))
         .tcp_keepalive(Duration::from_secs(30))
+        .user_agent("FreeModelsServer/1.0")
         .build()
         .expect("Failed to build HTTP client")
 }

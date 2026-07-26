@@ -269,13 +269,13 @@ async fn fetch_provider_models(state: tauri::State<'_, AppState>, server_url: St
 }
 
 #[tauri::command]
-async fn fetch_provider_model_maps(state: tauri::State<'_, AppState>, server_url: String, model_id: Option<i32>) -> Result<Vec<Value>, String> {
+async fn fetch_provider_model_maps(state: tauri::State<'_, AppState>, server_url: String, model_id: Option<i32>, provider_id: Option<i32>) -> Result<Vec<Value>, String> {
     let keypair = {
         let kp = state.keypair.lock().map_err(|e| e.to_string())?;
         kp.clone().ok_or_else(|| "Keypair not loaded. Please configure key paths in Settings.".to_string())?
     };
     let client = AdminClient::new(server_url, keypair);
-    client.list_provider_model_maps(model_id, None).await
+    client.list_provider_model_maps(model_id, provider_id).await
 }
 
 #[tauri::command]
