@@ -50,6 +50,7 @@ interface MappingFormState {
   priority: number;
   status: string;
   context_length: number;
+  timeout: number;
   is_active: boolean;
 }
 
@@ -73,6 +74,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
     priority: 0,
     status: 'available',
     context_length: 256000,
+    timeout: 30,
     is_active: true,
   });
 
@@ -93,6 +95,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
       priority: item.priority,
       status: item.status,
       context_length: item.context_length ?? 256000,
+      timeout: item.timeout ?? 30,
       is_active: item.is_active,
     });
     setDrawerTitle('编辑供应商映射');
@@ -108,6 +111,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
       priority: 0,
       status: 'available',
       context_length: 256000,
+      timeout: 30,
       is_active: true,
     });
     setDrawerTitle('新建供应商映射');
@@ -132,6 +136,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
             priority: form.priority,
             status: form.status,
             context_length: form.context_length,
+            timeout: form.timeout,
             is_active: form.is_active,
           },
         });
@@ -146,6 +151,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
             priority: form.priority,
             status: form.status,
             context_length: form.context_length,
+            timeout: form.timeout,
             is_active: form.is_active,
           },
         });
@@ -212,6 +218,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
               <th>协议</th>
               <th>优先级</th>
               <th>上下文长度</th>
+              <th>超时</th>
               <th>状态</th>
               <th>启用</th>
               <th>操作</th>
@@ -220,7 +227,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
           <tbody>
             {maps.length === 0 ? (
               <tr>
-                <td colSpan={8} className="models-empty">暂无映射</td>
+                <td colSpan={9} className="models-empty">暂无映射</td>
               </tr>
             ) : (
               maps.map((item) => (
@@ -230,6 +237,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
                   <td>{item.protocols || '-'}</td>
                   <td>{item.priority}</td>
                   <td>{item.context_length?.toLocaleString() ?? '-'}</td>
+                  <td>{item.timeout != null ? `${item.timeout}s` : '-'}</td>
                   <td>
                     <DoodleTag color={STATUS_COLOR[item.status] ?? 'default'}>
                       {STATUS_OPTIONS.find((o) => o.value === item.status)?.label ?? item.status}
@@ -328,6 +336,17 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
                 onChange={(checked) => setForm({ ...form, is_active: checked })}
               />
             </div>
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-field">
+            <label className="form-label">超时秒数</label>
+            <input
+              type="number"
+              className="form-number ant-input"
+              value={form.timeout}
+              onChange={(e) => setForm({ ...form, timeout: Number(e.target.value) })}
+            />
           </div>
         </div>
       </Drawer>
@@ -486,7 +505,6 @@ function Models() {
           <thead>
             <tr>
               <th>名称</th>
-              <th>供应商</th>
               <th className="sortable-th" onClick={togglePrioritySort}>
                 优先级{sortIcon}
               </th>
@@ -499,13 +517,12 @@ function Models() {
           <tbody>
             {filteredModels.length === 0 ? (
               <tr>
-                <td colSpan={7} className="models-empty">暂无数据</td>
+                <td colSpan={6} className="models-empty">暂无数据</td>
               </tr>
             ) : (
               filteredModels.map((m) => (
                 <tr key={m.id}>
                   <td className="clickable-name" onClick={() => openEdit(m)}>{m.name}</td>
-                  <td>-</td>
                   <td>{m.priority}</td>
                   <td>{m.timeout}s</td>
                   <td>{m.context_length.toLocaleString()}</td>

@@ -671,9 +671,13 @@ function Providers() {
                         options={models.map((mm) => ({ label: mm.name, value: mm.name }))}
                         style={{ width: '100%' }}
                       />
-                      <div><label>Protocols</label></div>
-                      <DoodleInput size="small" value={details.protocols} onChange={(e) => setImportModelDetails((prev) => ({ ...prev, [m.id]: { ...prev[m.id], protocols: e.target.value } }))} />
-                      <div><label>Context Length（可选）</label></div>
+                      <div><label>协议</label></div>
+                      <DoodleCheckbox.Group
+                        value={details.protocols ? details.protocols.split(',').filter(Boolean) : []}
+                        onChange={(checked) => setImportModelDetails((prev) => ({ ...prev, [m.id]: { ...prev[m.id], protocols: checked.join(',') } }))}
+                        options={['openai', 'anthropic', 'responses'].map((p) => ({ label: p, value: p }))}
+                      />
+                      <div><label>上下文长度（可选）</label></div>
                       <DoodleInput type="number" size="small" value={details.context_length ?? ''} onChange={(e) => setImportModelDetails((prev) => ({ ...prev, [m.id]: { ...prev[m.id], context_length: e.target.value ? parseInt(e.target.value) : undefined } }))} placeholder="默认 256000" />
                     </div>
                   )}
