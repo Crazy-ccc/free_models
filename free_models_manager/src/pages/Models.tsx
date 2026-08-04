@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Checkbox } from 'antd';
 import Toolbar from '../components/Toolbar';
 import Drawer from '../components/Drawer';
 import Toggle from '../components/Toggle';
+import {
+  DoodleButton,
+  DoodleTag,
+  DoodleCheckbox,
+  DoodleModal,
+  type DoodleTagColor,
+} from '../components/doodle';
 import { invoke } from '@tauri-apps/api/core';
 import type { Model, Provider, ProviderModelMap } from '../types';
 import './Models.less';
@@ -31,6 +37,11 @@ const STATUS_OPTIONS = [
   { value: 'unavailable', label: '不可用' },
   { value: 'deprecated', label: '废弃' },
 ];
+const STATUS_COLOR: Record<string, DoodleTagColor> = {
+  available: 'available',
+  unavailable: 'unavailable',
+  deprecated: 'deprecated',
+};
 
 interface MappingFormState {
   provider_id: number;
@@ -147,12 +158,12 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
   };
 
   const handleDelete = (id: number) => {
-    Modal.confirm({
+    DoodleModal.confirm({
       title: '确定删除？',
       content: '将删除该供应商映射',
       okText: '确定',
       cancelText: '取消',
-      okButtonProps: { danger: true },
+      danger: true,
       onOk: async () => {
         await invoke('delete_provider_model_map', { serverUrl, id });
         loadMaps();
@@ -176,7 +187,6 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
       setMaps((prev) =>
         prev.map((m) => (m.id === item.id ? { ...m, is_active: prevState } : m))
       );
-    } finally {
       loadMaps();
     }
   };
@@ -185,11 +195,12 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
     <div className="models-page">
       <div className="toolbar">
         <div className="toolbar-title">
-          <button className="back-arrow" onClick={onBack}>←</button>
+          <DoodleButton size="small" type="ghost" className="back-arrow" onClick={onBack}>←</DoodleButton>
           供应商映射 - {modelName}
         </div>
+        <div className="toolbar-spacer" />
         <div className="toolbar-actions">
-          <button className="ant-btn ant-btn-primary" onClick={openCreate}>+ 新建映射</button>
+          <DoodleButton type="primary" onClick={openCreate}>+ 新建映射</DoodleButton>
         </div>
       </div>
       <div className="models-table-wrap">
@@ -220,9 +231,9 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
                   <td>{item.priority}</td>
                   <td>{item.context_length?.toLocaleString() ?? '-'}</td>
                   <td>
-                    <span className={`status-tag ${item.status}`}>
+                    <DoodleTag color={STATUS_COLOR[item.status] ?? 'default'}>
                       {STATUS_OPTIONS.find((o) => o.value === item.status)?.label ?? item.status}
-                    </span>
+                    </DoodleTag>
                   </td>
                   <td>
                     <div className="toggle-wrap">
@@ -230,8 +241,10 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
                     </div>
                   </td>
                   <td>
-                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={() => openEdit(item)}>编辑</button>
-                    <button className="ant-btn ant-btn-dangerous" onClick={() => handleDelete(item.id)}>删除</button>
+                    <div className="act">
+                      <DoodleButton size="small" onClick={() => openEdit(item)}>编辑</DoodleButton>
+                      <DoodleButton size="small" type="danger" onClick={() => handleDelete(item.id)}>删除</DoodleButton>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -268,7 +281,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
         </div>
         <div className="form-field">
           <label className="form-label">协议</label>
-          <Checkbox.Group
+          <DoodleCheckbox.Group
             value={form.protocols ? form.protocols.split(',').filter(Boolean) : []}
             onChange={(checked) => setForm({ ...form, protocols: checked.join(',') })}
             options={PROTOCOL_OPTIONS.map((p) => ({ label: p, value: p }))}
@@ -409,12 +422,12 @@ function Models() {
   };
 
   const handleDeleteRow = (model: Model) => {
-    Modal.confirm({
+    DoodleModal.confirm({
       title: '确定删除？',
       content: `将删除模型「${model.name}」`,
       okText: '确定',
       cancelText: '取消',
-      okButtonProps: { danger: true },
+      danger: true,
       onOk: () => {
         invoke('delete_model', { serverUrl, id: model.id }).then(() => {
           load();
@@ -439,7 +452,6 @@ function Models() {
       setModels((prev) =>
         prev.map((m) => (m.id === model.id ? { ...m, is_active: prevState } : m))
       );
-    } finally {
       load();
     }
   };
@@ -467,7 +479,7 @@ function Models() {
   return (
     <div className="models-page">
       <Toolbar title="模型" showSearch={true} searchValue={searchQuery} onSearchChange={setSearchQuery}>
-        <button className="ant-btn ant-btn-primary" onClick={openNew}>+ 新增</button>
+        <DoodleButton type="primary" onClick={openNew}>+ 新增</DoodleButton>
       </Toolbar>
       <div className="models-table-wrap">
         <table className="models-table">
@@ -503,9 +515,11 @@ function Models() {
                     </div>
                   </td>
                   <td>
-                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openEdit(m); }}>编辑</button>
-                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openMappingPage(m); }}>供应商映射</button>
-                    <button className="ant-btn ant-btn-dangerous" onClick={(e) => { e.stopPropagation(); handleDeleteRow(m); }}>删除</button>
+                    <div className="act">
+                      <DoodleButton size="small" onClick={(e) => { e.stopPropagation(); openEdit(m); }}>编辑</DoodleButton>
+                      <DoodleButton size="small" onClick={(e) => { e.stopPropagation(); openMappingPage(m); }}>供应商映射</DoodleButton>
+                      <DoodleButton size="small" type="danger" onClick={(e) => { e.stopPropagation(); handleDeleteRow(m); }}>删除</DoodleButton>
+                    </div>
                   </td>
                 </tr>
               ))

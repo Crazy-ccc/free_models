@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Free Models · 手绘涂鸦风管理端设计稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gochi+Hand&family=Comic+Neue:wght@400;700&family=ZCOOL+KuaiLe&family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+<style>
+/* =========================================================
+   手绘涂鸦风设计系统 · design token
+   ========================================================= */
+:root{
+  --paper:      #FBF5E7;   /* 暖米色纸张 */
+  --paper-2:    #F4EADA;   /* 深一档纸张 */
+  --paper-card: #FFFDF6;   /* 卡片纸 */
+  --ink:        #37332B;   /* 墨色主文字 */
+  --ink-2:      #6B6354;   /* 次级文字 */
+  --ink-3:      #9C9281;   /* 弱文字 */
+
+  /* 蜡笔/马克笔色系（低饱和手绘感）*/
+  --crayon-orange:#EB8A2F;
+  --crayon-red:   #E2604F;
+  --crayon-teal:  #3FA09A;
+  --crayon-blue:  #4E7FD6;
+  --crayon-green: #7FB24A;
+  --crayon-purple:#9563C4;
+  --crayon-yellow:#EAB54B;
+  --crayon-pink:  #E589B0;
+
+  --ok:#7FB24A; --warn:#EB8A2F; --bad:#E2604F;
+
+  --shadow-hard: 0 6px 0 -2px rgba(82,63,42,.16);
+  --shadow-soft: 0 10px 26px -12px rgba(82,63,42,.35);
+  --wobble-1:255px 25px 225px 25px / 25px 225px 25px 255px;
+  --wobble-2:225px 15px 255px 15px / 15px 255px 15px 225px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:'Comic Neue','Noto Sans SC',-apple-system,PingFang SC,'Microsoft YaHei',sans-serif;
+  color:var(--ink);
+  background-color:var(--paper);
+  background-image:
+    radial-gradient(rgba(120,96,60,.10) 1px, transparent 1.3px);
+  background-size:22px 22px;
+  font-size:15px; line-height:1.55;
+  letter-spacing:.2px;
+}
+.hand{font-family:"Ma Shan Zheng",cursive}
+.kuale{font-family:"ZCOOL KuaiLe",cursive}
+.en{font-family:"Gochi Hand",cursive}
+
+/* 手写波浪下划线 */
+.squiggle{position:relative;display:inline-block}
+.squiggle::after{
+  content:"";position:absolute;left:0;right:0;bottom:-10px;height:12px;
+  background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='12' viewBox='0 0 120 12'><path d='M0 8 Q8 2 16 8 T32 8 T48 8 T64 8 T80 8 T96 8 T112 8 T120 8' fill='none' stroke='%23EB8A2F' stroke-width='3' stroke-linecap='round'/></svg>");
+  background-repeat:repeat-x;background-size:120px 12px;opacity:.85;
+}
+.squiggle.blue::after{stroke:#4E7FD6}
+
+/* ---------- 布局 ---------- */
+.shell{display:flex;min-height:100vh}
+.sidebar{
+  width:236px;flex:0 0 236px;position:sticky;top:0;height:100vh;
+  background:var(--paper-2);
+  border-right:3px solid rgba(55,51,43,.9);
+  border-image:linear-gradient(180deg,transparent 0 8px,rgba(55,51,43,.55) 8px 13px,transparent 13px 26px,rgba(55,51,43,.4) 26px 30px,transparent 30px) 1;
+  display:flex;flex-direction:column;padding:26px 18px 20px;
+}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 4px 18px}
+.brand-logo{
+  width:44px;height:44px;border-radius:var(--wobble-1);
+  background:var(--crayon-orange);color:#fff;
+  display:grid;place-items:center;font-size:22px;
+  box-shadow:var(--shadow-hard);transform:rotate(-4deg);
+}
+.brand-name .kuale{font-size:20px;line-height:1.1}
+.brand-sub{display:block;font-size:11px;color:var(--ink-2);letter-spacing:.5px}
+
+.nav{flex:1;display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.navitem{
+  display:flex;align-items:center;gap:11px;cursor:pointer;
+  padding:9px 12px;border-radius:var(--wobble-1);
+  color:var(--ink-2);font-size:16px;font-family:"ZCOOL KuaiLe",sans-serif;
+  transition:.18s;border:2.5px solid transparent;
+}
+.navitem .ico{font-size:19px;filter:grayscale(.3)}
+.navitem:hover{background:rgba(255,255,255,.55);transform:translateX(3px) rotate(-.4deg)}
+.navitem.active{
+  background:var(--paper-card);color:var(--ink);
+  border-color:rgba(55,55,43,.5);
+  box-shadow:var(--shadow-hard);transform:rotate(.6deg)
+}
+.navitem.active .ico{filter:none}
+.nav-divider{height:2px;margin:8px 6px;background:repeating-linear-gradient(90deg,rgba(55,55,43,.3) 0 6px,transparent 6px 12px)}
+.design-link{margin:2px 0;display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;font-size:13px;color:var(--crayon-purple);border:2.5px dashed var(--crayon-purple);border-radius:var(--wobble-1);transition:.18s}
+.design-link:hover{transform:rotate(-.8deg);box-shadow:var(--shadow-hard)}
+.conn{
+  margin-top:12px;display:flex;align-items:center;gap:9px;
+  border:2.5px solid rgba(55,55,43,.25);border-radius:var(--wobble-2);
+  padding:9px 12px;background:transparent;font-size:13px;color:var(--ink-2);
+}
+.dot{width:12px;height:12px;border-radius:50%;display:inline-block;box-shadow:var(--shadow-hard)}
+.dot.ok{background:var(--ok)}.dot.down{background:var(--bad)}
+.side-foot{margin-top:10px;font-size:11px;color:var(--ink-3);text-align:center}
+
+/* ---------- 主区域 ---------- */
+.main{flex:1;padding:26px 34px 48px;overflow:auto}
+.page{display:none;max-width:1180px;margin:0 auto}
+.page.show{display:block;animation:rise .32s ease-out}
+@keyframes rise{from{opacity:0;transform:translateY(8px) rotate(-.3deg)}to{opacity:1;transform:none}}
+
+.toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px}
+.toolbar h2{font-family:"Ma Shan Zheng",cursive;font-size:30px;font-weight:400;color:var(--ink)}
+.toolbar h2 small{display:block;font-family:"Comic Neue",sans-serif;font-size:13px;color:var(--ink-3);letter-spacing:.4px}
+.spacer{flex:1}
+.search{
+  border:none;border-bottom:3px dotted rgba(55,55,43,.5);outline:none;
+  background:transparent;padding:6px 4px;font-family:"Comic Neue",sans-serif;
+  width:220px;font-size:15px;color:var(--ink)
+}
+.search:focus{border-bottom-color:var(--crayon-orange)}
+.search::placeholder{color:var(--ink-3)}
+
+.btn{
+  display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  border:2.5px solid var(--ink);border-radius:var(--wobble-2);
+  background:var(--paper-card);color:var(--ink);
+  padding:8px 16px;font-family:"ZCOOL KuaiLe",sans-serif;font-size:15px;
+  box-shadow:var(--shadow-hard);transition:.12s;
+}
+.btn:hover{transform:translateY(-1px) rotate(-.5deg);box-shadow:0 7px 0 -2px rgba(60,63,42,.2)}
+.btn:active{transform:translateY(3px);box-shadow:none}
+.btn:focus{outline:3px solid rgba(78,127,214,.35)}
+.btn.primary{background:var(--crayon-orange);border-color:var(--ink);color:#fff;text-shadow:0 1px 0 rgba(0,0,0,.15)}
+.btn.teal{background:var(--crayon-teal);border-color:var(--ink);color:#fff}
+.btn.green{background:var(--crayon-green);border-color:var(--ink);color:#fff}
+.btn.danger{color:var(--bad)}
+.btn.sm{padding:4px 11px;font-size:13px;box-shadow:0 3px 0 -1px rgba(60,53,42,.2)}
+.btn.sm:active{transform:translateY(1px);box-shadow:none}
+.btn.ghost{background:none;box-shadow:none;border-color:rgba(55,55,43,.4)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none !important;box-shadow:none}
+
+/* 纸片卡片 */
+.paper-card{
+  background:var(--paper-card);border:3px solid var(--ink);
+  border-radius:var(--wobble-1);box-shadow:var(--shadow-hard);padding:18px 20px;
+  position:relative;
+}
+.paper-card:before,.paper-card:after{
+  content:"";position:absolute;top:unset;border:2px solid var(--ink);opacity:.5;border-radius:50%;
+}
+.paper-card:before{bottom:10px;right:16px;width:22px;height:9px;transform:rotate(-14deg)}
+.paper-card:after{top:24px;right:10px;width:8px;height:8px;opacity:.35}
+
+.card-title{
+  font-family:"Ma Shan Zheng",cursive;font-size:21px;margin-bottom:2px;
+  display:flex;align-items:center;gap:8px;
+}
+.card-title .pin{color:var(--crayon-red);font-size:16px}
+.hint{font-size:12px;color:var(--ink-3)}
+
+/* 概览：状态卡 */
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px;margin-bottom:20px}
+.stat{
+  background:var(--paper-card);border:3px solid var(--ink);border-radius:var(--wobble-1);
+  box-shadow:var(--shadow-hard);padding:16px 18px;transform:rotate(var(--tilt,0deg));
+}
+.stat:hover{transform:rotate(0deg) translateY(-3px);transition:.18s}
+.stat .lab{font-family:"ZCOOL KuaiLe",sans-serif;font-size:14px;color:var(--ink-2);display:flex;align-items:center;gap:7px}
+.stat .lab .bul{font-size:15px}
+.stat .val{font-family:"Gochi Hand",cursive;font-size:40px;line-height:1.1;margin:4px 0 2px}
+.stat .val em{font-style:normal;font-family:"ZCOOL KuaiLe",sans-serif;font-size:16px;color:var(--ink-2)}
+.stat .sub{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--ink-2)}
+.stat .sub b{font-family:"Gochi Hand",cursive;font-size:19px;color:var(--ink)}
+pills{display:inline-flex;align-items:center;gap:4px}
+.pill{display:inline-flex;align-items:center;gap:4px;background:rgba(55,55,43,.06);border:2px solid rgba(55,55,43,.16);border-radius:var(--wobble-2);padding:1px 8px;font-size:12px}
+.pill.ok{background:var(--ok);border-color:var(--ink);color:#fff}
+a{color:var(--crayon-blue)}
+
+/* 表格 */
+.tbl-wrap{margin-top:6px;overflow-x:auto}
+table.tbl{width:100%;border-collapse:collapse;min-width:640px}
+.tbl thead th{
+  font-family:"ZCOOL KuaiLe",sans-serif;font-weight:400;text-align:left;color:var(--ink);
+  padding:10px 14px 2px;font-size:14px;position:relative;white-space:nowrap;
+}
+.tbl thead th:after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:4px;background-repeat:repeat-x;background-size:8px 4px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='4' viewBox='0 0 8 4'><path d='M0 2 Q2 0 4 2 T8 2' fill='none' stroke='%237FB24A' stroke-width='1.4'/></svg>")}
+.tbl thead th.sortable{cursor:pointer;color:var(--crayon-blue)}
+.tbl tbody td{padding:10px;border-bottom:2px dotted rgba(55,55,40,.22);font-size:14px;vertical-align:middle}
+.tbl tbody tr:hover td{background:rgba(232,216,187,.35)}
+.tbl td .name{font-family:"ZCOOL KuaiLe",sans-serif;font-size:15px;cursor:pointer}
+.mono{font-family:"Courier New",monospace;font-size:13px;color:var(--ink-2)}
+.empty{text-align:center;color:var(--ink-3);padding:26px !important;font-family:"Ma Shan Zheng",cursive;font-size:18px}
+.act{display:flex;gap:7px;flex-wrap:wrap}
+
+/* tag */
+.tag{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:var(--wobble-2);border:2.5px solid var(--ink);font-size:12px;font-family:"ZCOOL KuaiLe",sans-serif;box-shadow:0 3px 0 -1px rgba(60,53,42,.22)}
+.tag.available{background:var(--crayon-green);color:#fff}
+.tag.unavailable{background:var(--crayon-red);color:#fff}
+.tag.deprecated{background:var(--crayon-purple);color:#fff}
+.tag.saved{background:var(--crayon-blue);color:#fff}
+.tag.mask{background:var(--paper-2);}
+
+/* 开关 */
+.toggle{width:52px;height:26px;border-radius:999px;border:2.5px solid var(--ink);background:#e6dcc6;cursor:pointer;position:relative;box-shadow:inset 0 2px 3px rgba(0,0,0,.12);transition:.18s}
+.toggle .knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--paper-card);border:2px solid var(--ink);box-shadow:var(--shadow-hard);transition:.18s}
+.toggle.on{background:var(--crayon-green)}
+.toggle.on .knob{transform:translateX(26px)}
+
+/* input */
+.field{margin-bottom:14px}
+.field label{display:block;font-family:"ZCOOL KuaiLe",sans-serif;color:var(--ink-2);font-size:14px;margin-bottom:4px}
+.inp{
+  width:100%;border:none;border-bottom:2.5px solid rgba(55,55,40,.5);outline:none;
+  background:transparent;padding:5px 2px;font-family:"Comic Neue",sans-serif;font-size:15px;color:var(--ink)
+}
+.inp:focus{border-bottom-color:var(--crayon-blue)}
+.inp::placeholder{color:var(--ink-3)}
+
+/* 覆盖层：抽屉 / 弹窗 */
+.overlay{position:fixed;inset:0;background:rgba(55,48,38,.4);display:none;align-items:center;justify-content:center;z-index:50}
+.overlay.show{display:flex}
+.overlay.left{justify-content:flex-end}
+.modal{background:var(--paper-card);border:3.5px solid var(--ink);border-radius:var(--wobble-1);box-shadow:var(--shadow-soft);width:520px;max-width:94vw;max-height:86vh;display:flex;flex-direction:column;transform:rotate(-.4deg)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;font-family:"Ma Shan Zheng",cursive;font-size:21px;border-bottom:2.5px dashed rgba(55,55,40,.35)}
+.modal-x{cursor:pointer;font-size:22px;color:var(--bad);line-height:1}
+.modal-body{padding:20px 22px;overflow:auto}
+.modal-foot{display:flex;gap:10px;justify-content:flex-end;padding:14px 22px;border-top:2.5px dashed rgba(55,55,40,.35)}
+.drawer-panel{width:380px;max-width:92vw;height:100vh;background:var(--paper-card);border-left:3.5px solid var(--ink);box-shadow:var(--shadow-soft);display:flex;flex-direction:column;transform:translateX(-20px)}
+.import-row{padding:8px 0;border-bottom:2px dotted rgba(55,55,40,.28)}
+.import-row.gone{opacity:.5;background:var(--paper-2)}
+.check{display:inline-flex;gap:8px;align-items:center;cursor:pointer;font-size:14px}
+.check input{width:18px;height:18px;accent-color:var(--crayon-orange);cursor:pointer}
+.sec{clear:both}
+.badge-ct{margin-top:0;color:var(--ink-2);font-size:12px}
+.sel{width:100%;border:2.5px solid var(--ink);border-radius:var(--wobble-2);background:var(--paper-card);padding:6px 8px;font-family:"Comic Neue",sans-serif;font-size:14px;color:var(--ink);box-shadow:var(--shadow-hard)}
+.sel:focus{outline:2px solid rgba(82,127,214,.4)}
+
+/* 摘要卡(统计) */
+.sumrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin:6px 0 20px}
+.sumcard{background:var(--paper-card);border:3px solid var(--ink);border-radius:var(--wobble-2);box-shadow:var(--shadow-hard);padding:12px 16px;transform:rotate(var(--r,0deg));cursor:default}
+.sumcard .sl{font-family:"ZCOOL KuaiLe",sans-serif;color:var(--ink-2);font-size:13px}
+.sumcard .sv{font-family:"Gochi Hand",cursive;font-size:26px}
+
+/* 惩罚清单 */
+.penalty{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:2px dotted rgba(55,55,40,.3)}
+.penalty .stamp{color:var(--crayon-red);font-size:16px}
+.penalty .pm{font-family:"ZCOOL KuaiLe",sans-serif;font-size:15px}
+.penalty .pv{color:var(--ink-2);font-size:13px}
+.penalty .time{margin-left:auto;font-size:12px;color:var(--warn)}
+
+/* 配色 swatch */
+.sw{border:2.5px solid var(--ink);border-radius:var(--wobble-2);box-shadow:var(--shadow-hard);overflow:hidden;width:118px}
+.sw .chip{height:54px}
+.sw .nm{padding:6px 8px;font-size:12px;background:var(--paper-card);text-align:center}
+
+/* 通用小工具 */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.divider-dash{height:0;border-top:2.5px dashed rgba(55,55,40,.3);margin:24px 0}
+.divider{height:0;border-top:2.5px dashed rgba(55,55,40,.3);margin:24px 0}
+.callout{border:2.5px dashed var(--crayon-purple);border-radius:var(--wobble-1);background:rgba(149,99,196,.08);padding:14px 16px;font-size:13.5px;color:var(--ink-2);margin-top:16px}
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--crayon-green);border:2.5px solid var(--ink);color:#fff;padding:10px 22px;border-radius:var(--wobble-2);box-shadow:var(--shadow-soft);opacity:0;transition:.25s;font-family:"ZCOOL KuaiLe",sans-serif;z-index:99}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- ============ 侧边栏 ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">✏️</div>
+      <div class="brand-name">
+        <span class="hand" style="font-size:0"> </span>
+        <div class="kuale" style="font-size:20px">Free&nbsp;Models</div>
+        <span class="brand-sub hand">模型中转 · 使用手册</span>
+      </div>
+    </div>
+    <nav class="nav" id="nav">
+      <div class="navitem" data-page="overview"><span class="ico">🎏</span><span>概览</span></div>
+      <div class="navitem" data-page="providers"><span class="ico">🧭</span><span>供应商</span></div>
+      <div class="navitem" data-page="models"><span class="ico">🤖</span><span>模型</span></div>
+      <div class="navitem" data-page="apikeys"><span class="ico">🗝️</span><span>API&nbsp;Keys</span></div>
+      <div class="navitem" data-page="stats"><span class="ico">📈</span><span>统计</span></div>
+      <div class="navitem" data-page="settings"><span class="ico">🖊️</span><span>设置</span></div>
+      <div class="nav-divider"></div>
+      <div class="design-link" data-page="design"><span>🎨</span><span>设计规范 / 组件库</span></div>
+    </nav>
+    <div class="conn"><span class="dot ok"></span><span>服务已连接</span></div>
+    <div class="foot">手绘涂鸦风格 · 设计稿 v0.1</div>
+  </aside>
+
+  <!-- ============ 主区域 ============ -->
+  <main class="main">
+
+    <!-- ############ 设计规范页 ############ -->
+    <section class="page" id="page-design">
+      <div class="toolbar"><h2>设计规范 <small contenteditable></small></h2>
+      <span class="spacer"></span>
+      <button class="btn sm ghost" onclick="go('overview')">▶ 去页面逛逛</button></div>
+
+      <div class="foot" style="border:none;margin-top:0"><span class="kuale" style="font-size:17px">手绘涂鸦，是「随手记在本子上」的笔记本气质 —— 暖纸、墨线、蜡笔指示标记、歪歪扭扭的框，所有的「严肃信息」仍清晰可读，但多了一份松弛与亲切。</span></div>
+      <div class="divider"></div>
+
+      <div class="card-title"><span class="bar">⬤</span> 配色 · 蜡笔六色盘</div>
+      <div class="grid3" style="margin-top:16px">
+        <div class="sw"><div class="c" style="background:#EB8A2F"></div><div class="sw">crayon orange <small>#EB8A2F · 主操作</small></div></div>
+        <div class="sw"><div class="c" style="background:#4E7FD6"></div><div class="sw">ink blue <small>#4E7FD6 · 链接/选中</small></div></div>
+        <div class="sw"><div class="c" style="background:#7FB24A"></div><div class="sw">leaf green <small>#7FB24A · 可用/成功</small></div></div>
+        <div class="sw"><div class="c" style="background:#E2604F"></div><div class="sw">tomato red <small>#E2604F · 危险/失败</small></div></div>
+        <div class="sw"><div class="c" style="background:#9563C4"></div><div class="sw">grape purple <small>#9563C4 · 次要强调</small></div></div>
+        <div class="sw"><div class="c" style="background:#3FA09A"></div><div class="sw">pond teal <small>#3FA09A · 数据强调</small></div></div>
+        <div class="sw"><div class="c" style="background:#FDF5E7"></div><div class="sw">kraft paper <small>#FDF5E7 · 底纸</small></div></div>
+        <div class="sw"><div class="c" style="background:#37332B"></div><div class="sw">ink <small>#37332B · 墨线文字</small></div></div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="card-title"><span class="bar">⬢</span> 字 · 三种手感</div>
+      <div class="grid3" style="margin:14px 0">
+        <div class="paper-card"><div class="hint">大标题 · 中文草书</div><div class="hand" style="font-size:26px">Ma Shan Zheng</div></div>
+        <div class="paper-card"><div class="hint">小标题/强调 · 快乐体</div><div class="kuale" style="font-size:20px">ZCOOL 快乐体 KuaiLe</div></div>
+        <div class="paper-card"><div class="hint">数字/英文 · 手写体</div><div class="en" style="font-size:26px">Gochi Hand</div></div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="card-title"><span class="bar">⬢</span> 组件 · 零件盒</div>
+      <div class="grid2" style="margin-top:16px;align-items:start">
+        <div class="paper-card">
+          <div class="font-hint" style="font-size:13px;color:var(--ink-3)">按钮 Button</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">
+            <button class="btn">默认</button>
+            <button class="btn primary">＋ 新增</button>
+            <button class="btn teal">保存</button>
+            <button class="btn danger">删除</button>
+            <button class="btn sm">编辑</button>
+            <button class="btn sm ghost">取消</button>
+          </div>
+        </div>
+        <div class="paper-card">
+          <div style="font-size:13px;color:var(--ink-3)">状态标签 Tag</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">
+            <span class="tag available">● 可用</span>
+            <span class="tag unavailable">● 不可用</span>
+            <span class="tag deprecated">● 废弃</span>
+            <span class="tag saved">✓ 已保存</span>
+            <span class="tag mask">sk-***2401</span>
+          </div>
+        </div>
+        <div class="paper-card">
+          <div style="font-size:13px;color:var(--ink-3)">开关 Toggle</div>
+          <div style="display:flex;gap:18px;align-items:center;margin:10px 0">
+            <div class="toggle on"><div class="knob"></div></div>
+            <div class="toggle"><div class="knob"></div></div>
+          </div>
+        </div>
+        <div class="paper-card">
+          <div style="font-size:13px;color:var(--ink-3)">输入框 Input（下划线式）</div>
+          <div style="margin-top:10px">
+            <div class="field"><label>名称</label><input class="inp" placeholder="例如：OpenAI" /></div>
+          </div>
+        </div>
+        <div class="paper-card" style="grid-column:1/-1">
+          <div style="font-size:13px;color:var(--ink-3)">表格 Table（尺规虚线 + 蜡笔表头下划线）</div>
+          <div class="tbl-wrap" style="margin-top:8px"><table class="tbl">
+            <thead><tr><th>供应商</th><th>模型</th><th>优先级</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>OpenAI</td><td>gpt-4o</td><td>1</td><td><span class="tag available">可用</span></td><td><span class="act"><button class="btn sm">编辑</button><button class="btn sm danger">删除</button></span></td></tr>
+              <tr><td>Anthropic</td><td>claude-sonnet</td><td>2</td><td><span class="tag available">可用</span></td><td><span class="act"><button class="btn sm">编辑</button><button class="btn sm danger">删除</button></span></td></tr>
+              <tr><td>DeepSeek</td><td>deepseek-v3</td><td>3</td><td><span class="tag unavailable">不可用</span></td><td><span class="act"><button class="btn sm">编辑</button><button class="btn sm danger">删除</button></span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+        <div class="paper-card">
+          <div style="font-size:13px;color:var(--ink-3)">弹窗 Modal</div>
+          <div style="margin-top:10px;display:flex;gap:10px">
+            <button class="btn sm" onclick="openModal('m_confirm')">删除确认</button>
+            <button class="btn sm teal" onclick="openModal('m_success')">成功提示</button>
+          </div>
+        </div>
+        <div class="paper-card">
+          <div style="font-size:13px;color:var(--ink-3)">侧边抽屉 Drawer（编辑表单）</div>
+          <div style="margin-top:10px">
+            <button class="btn sm" onclick="openDrawer('d_demo')">打开表单抽屉</button>
+          </div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="foot" style="text-align:center;color:var(--ink-3);font-size:13px">点击左侧导航可浏览六大功能页面 · 每个页面的角落都藏着手绘小细节 ✏️</div>
+    </section>
+
+    <!-- ############ 概览 ############ -->
+    <section class="page" id="page-overview">
+      <div class="toolbar">
+        <h2>概览 <small class="hand">hi, 今天也不错 ☕</small></h2>
+        <span class="spacer"></span>
+        <button class="btn" onclick="toast('缓存已刷新 🧽')">⟳ 刷新缓存</button>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat" style="--tilt:-.8deg">
+          <div class="lab"><span class="mono">🔌</span> 服务状态</div>
+          <div class="val"><span class="dot ok" style="vertical-align:middle;margin-right:6px"></span><em>Healthy</em></div>
+          <div class="sub">后端正常应答</div>
+        </div>
+        <div class="stat" style="--tilt:.7deg">
+          <div class="lab"><span class="mono">🤖</span> 模型数</div>
+          <div class="val"><em style="font-size:22px">总</em> 12 <em style="font-size:15px">/ 可用</em> <b style="color:var(--ok)">11</b></div>
+          <div class="sub"><span>不可用 <b style="color:var(--bad)">1</b></span></div>
+        </div>
+        <div class="stat" style="--tilt:-.5deg">
+          <div class="lab"><span class="mono">🧭</span> 供应商数</div>
+          <div class="val"><b style="font-size:22px;font-family:'ZCOOL KuaiLe'">6</b> / <span style="color:var(--crayon-teal)">5</span></div>
+          <div class="sub">不可用 <b style="color:var(--bad)">1</b></div>
+        </div>
+        <div class="stat" style="--tilt:.6deg">
+          <div class="lab"><span class="mono">🗝️</span> API Keys 数</div>
+          <div class="val"><b style="font-size:22px;font-family:'ZCOOL KuaiLe'">3</b> / <span style="color:var(--crayon-teal)">3</span></div>
+          <div class="sub">全部启用 ✓</div>
+        </div>
+      </div>
+
+      <div class="paper-card" style="margin-bottom:20px">
+        <div class="card-title"><span class="bar"></span> 昨日 Token 消耗 <span class="hint" style="margin-left:10px">2026-08-02</span></div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>供应商</th><th>模型</th><th>请求数</th><th>Prompt</th><th>Completion</th><th>Total</th><th>Cache 命中</th><th>命中率</th></tr></thead>
+            <tbody>
+              <tr><td>OpenAI</td><td class="mono">gpt-4o</td><td>128</td><td>1.2M</td><td>348K</td><td>1.6M</td><td>980K</td><td><b style="color:var(--ok)">61%</b></td></tr>
+              <tr><td>Anthropic</td><td class="mono">claude-sonnet</td><td>86</td><td>930K</td><td>210K</td><td>1.1M</td><td>410K</td><td><b style="color:var(--ok)">37%</b></td></tr>
+              <tr><td>DeepSeek</td><td class="mono">deepseek-v3</td><td>45</td><td>380K</td><td>96K</td><td>476K</td><td>60K</td><td>13%</td></tr>
+              <tr><td colspan="8" class="empty">（示意数据，非真实）</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="paper-card">
+        <div class="card-title"><span class="bar">⏳</span> 惩罚中的模型</div>
+        <div>
+          <div class="penalty"><span class="stamp">✕</span><span class="chip">gpt-4o</span><span class="pv">· OpenAI</span><span class="time">剩余 12min</span></div>
+          <div class="penalty"><span class="stamp">✕</span><span class="chip">deepseek-r1</span><span class="pv">· DeepSeek</span><span class="time">剩余 4min</span></div>
+          <div class="empty" style="padding:14px">（示意示例）</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ############ 供应商 ############ -->
+    <section class="page" id="page-providers">
+      <div class="toolbar">
+        <h2>供应商 <small class="hand">上游的家人们</small></h2>
+        <span class="spacer"></span>
+        <!-- 演示子页面：凭证管理 -->
+        <input class="search" id="pv_search" placeholder="搜索 名称 / 地址 ..." oninput="pvSearch()" />
+        <button class="btn primary" onclick="openDrawer('d_provider')">＋ 新增</button>
+      </div>
+      <div class="paper-card">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>名称</th><th>Base URL</th><th style="min-width:320px">操作</th></tr></thead>
+            <tbody id="pv_tbody">
+              <tr>
+                <td class="name">OpenAI</td><td class="mono">https://api.openai.com/v1</td>
+                <td class="act"><button class="btn sm" onclick="openDrawer('d_provider')">编辑</button><button class="btn sm" onclick="go('credentials','OpenAI')">🔑 凭证</button><button class="btn sm" onclick="openModal('m_import')">＋ 一键添加模型</button><button class="btn sm danger" onclick="openModal('m_confirm')">删除</button></td>
+              </tr>
+              <tr>
+                <td class="name">Anthropic</td><td class="mono">https://api.anthropic.com</td>
+                <td class="act"><button class="btn sm" onclick="openDrawer('d_provider')">编辑</button><button class="btn sm" onclick="go('credentials','Anthropic')">🔑 凭证</button><button class="btn sm" onclick="openModal('m_import')">＋ 一键添加模型</button><button class="btn sm danger">删除</button></td>
+              </tr>
+              <tr>
+                <td class="name">DeepSeek</td><td class="mono">https://api.deepseek.com</td>
+                <td class="act"><button class="btn sm" onclick="openDrawer('d_provider')">编辑</button><button class="btn sm" onclick="go('credentials','DeepSeek')">🔑 凭证</button><button class="btn sm" onclick="openModal('m_import')">＋ 一键添加模型</button><button class="btn sm danger">删除</button></td>
+              </tr>
+              <tr><td colspan="3" class="empty">＋ 再添加一个供应商试试 →</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ############ 凭证（供应商子页） ############ -->
+    <section class="page" id="page-credentials">
+      <div class="toolbar">
+        <h2><button class="btn sm ghost" style="margin-right:8px" onclick="go('providers')">←</button><span class="hand">凭证管理 - <i id="cred_name">OpenAI</i></span></h2>
+        <span class="spacer"></span>
+        <button class="btn primary" onclick="openDrawer('d_cred')">＋ 新增凭证</button>
+      </div>
+      <div class="paper-card">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>名称</th><th>Key</th><th>账号</th><th>优先级</th><th>启用</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>主账号</td><td class="mono">sk-***2401</td><td>ops@acme.com</td><td>0</td><td><div class="toggle on"><div class="knob"></div></div></td><td class="act"><button class="btn sm" onclick="openModal('m_test')">🧪 测试</button><button class="btn sm" onclick="openDrawer('d_cred')">编辑</button><button class="btn sm danger">删除</button></td></tr>
+              <tr><td>备用配额</td><td class="mono">sk-***77Aa</td><td>Trial</td><td>1</td><td><div class="toggle"><div class="knob"></div></div></td><td class="act"><button class="btn sm" onclick="openModal('m_test')">🧪 测试</button><button class="btn sm" onclick="openDrawer('d_cred')">编辑</button><button class="btn sm danger">删除</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ############ 模型 ############ -->
+    <section class="page" id="page-models">
+      <div class="toolbar">
+        <h2>模型 <small class="hand">让自由触手可及</small></h2>
+        <span class="spacer"></span>
+        <input class="search" placeholder="搜索模型…" />
+        <button class="btn primary" onclick="openDrawer('d_model')">＋ 新增</button>
+      </div>
+      <div class="paper-card">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>名称</th><th>供应商</th><th class="sortable">优先级 ▲</th><th>超时</th><th>上下文长度</th><th>启用</th><th style="min-width:280px">操作</th></tr></thead>
+            <tbody>
+              <tr><td class="name">gpt-4o</td><td>OpenAI</td><td>1</td><td>30s</td><td>128,000</td><td><div class="toggle on"><div class="knob"></div></div></td><td class="act"><button class="btn sm" onclick="openDrawer('d_model')">编辑</button><button class="btn sm" onclick="go('mappings','gpt-4o')">供应商映射</button><button class="btn sm danger">删除</button></td></tr>
+              <tr><td class="name">claude-sonnet</td><td>Anthropic</td><td>2</td><td>45s</td><td>200,000</td><td><div class="toggle on"><div class="knob"></div></div></td><td class="act"><button class="btn sm" onclick="openDrawer('d_model')">编辑</button><button class="btn sm" onclick="go('mappings','claude-sonnet')">供应商映射</button><button class="btn sm danger">删除</button></td></tr>
+              <tr><td class="name">deepseek-v3</td><td>DeepSeek</td><td>3</td><td>60s</td><td>64,000</td><td><div class="toggle"><div class="knob"></div></div></td><td class="act"><button class="btn sm" onclick="openDrawer('d_model')">编辑</button><button class="btn sm" onclick="go('mappings','deepseek-v3')">供应商映射</button><button class="btn sm danger">删除</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========= 供应商映射子页 ========= -->
+    <section class="page" id="page-mappings">
+      <div class="toolbar">
+        <h2><button class="btn sm ghost" style="margin-right:8px" onclick="go('models')">←</button><span class="hand">供应商映射 · <i id="map_name">gpt-4o</i></span></h2>
+        <span class="spacer"></span>
+        <button class="btn primary" onclick="openDrawer('d_mapping')">＋ 新建映射</button>
+      </div>
+      <div class="paper-card">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>供应商</th><th>Provider Model ID</th><th>协议</th><th>优先级</th><th>上下文长度</th><th>状态</th><th>启用</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>OpenAI</td><td class="mono">gpt-4o-2024-08-06</td><td class="tag available" style="padding:0 6px;font-size:11px">openai</td><td>1</td><td>128,000</td><td><span class="tag available">可用</span></td><td><div class="toggle on"><div class="knob"></div></div></td><td class="act"><button class="btn sm">编辑</button><button class="btn sm danger">删除</button></td></tr>
+              <tr><td>OpenAI (备用)</td><td class="mono">gpt-4o-mini</td><td class="tag available" style="padding:0 6px;font-size:11px">responses</td><td>5</td><td>128,000</td><td><span class="tag available">可用</span></td><td><div class="toggle"><div class="knob"></div></div></td><td class="act"><button class="btn sm">编辑</button><button class="btn sm danger">删除</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ############ API Keys ############ -->
+    <section class="page" id="page-apikeys">
+      <div class="toolbar">
+        <h2>API Keys <small class="hand">通往自由模型的车票</small></h2>
+        <span class="spacer"></span>
+        <input class="search" placeholder="搜名称…" />
+        <button class="btn primary" onclick="openDrawer('d_apikey')">＋ 新增</button>
+      </div>
+      <div class="paper-card">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>名称</th><th>Key</th><th>启用</th><th>创建时间</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td class="name">前端网关</td><td><span class="tag mask">sk-abc***9102</span><span class="icon-copy" onclick="toast('已复制到剪贴板 📋')" style="cursor:pointer;color:var(--crayon-blue);margin-left:8px">⧉</span></td><td><div class="toggle on"><div class="knob"></div></div></td><td><span class="mono">2026-07-28 14:02</span></td><td class="act"><button class="btn sm" onclick="openDrawer('d_apikey')">编辑</button><button class="btn sm danger">删除</button></td></tr>
+              <tr><td class="name">CI 流水线</td><td><span class="tag mask">sk-2-…3f7D</span><span class="icon-copy" onclick="toast('已复制到剪贴板 📋')" style="cursor:pointer;color:var(--crayon-blue);margin-left:8px">⧉</span></td><td><div class="toggle"><div class="knob"></div></div></td><td><span class="mono">2026-07-20 09:31</span></td><td class="act"><button class="btn sm" onclick="openDrawer('d_apikey')">编辑</button><button class="btn sm danger">删除</button></td></tr>
+            </tbody>
+            <tbody><tr><td colspan="5" class="empty">新增时，服务端自动生成 <b class="mono">fm-</b> 前缀的随机 Key 🔑（示意）</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ############ 统计 ############ -->
+    <section class="page" id="page-stats">
+      <div class="toolbar">
+        <h2>使用统计 <small class="hand">●●● 谁在烧 token.jpg</small></h2>
+        <span class="spacer"></span>
+        <button class="btn" onclick="toast('查询中… 🔎')">查询</button>
+        <button class="btn ghost" onclick="toast('已重置筛选')">重置筛选</button>
+      </div>
+      <div class="paper-card" style="margin-bottom:20px">
+        <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end">
+          <div class="field" style="margin-bottom:0"><label>开始日期</label><input class="inp" type="date" value="2026-07-01" /></div>
+          <div class="field" style="margin-bottom:0"><label>结束日期</label><input class="inp" type="date" value="2026-08-02" /></div>
+          <div class="field" style="margin-bottom:0"><label>分组维度</label>
+            <select class="sel"><option>供应商</option><option>凭证</option><option>模型</option><option>API Key</option><option>按天</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="sumrow">
+        <div class="sumcard" style="--r:-1deg"><div class="sl">总请求数</div><div class="sv">46.2K</div></div>
+        <div class="sumcard" style="--r:.8deg"><div class="sl">总 Tokens</div><div class="sv" style="color:var(--crayon-orange)">88.5M</div></div>
+        <div class="sumcard" style="--r:-.6deg"><div class="sl">Prompt</div><div class="sv" style="color:var(--crayon-teal)">51.9M</div></div>
+        <div class="sumcard" style="--r:.5deg"><div class="sl">Completion</div><div class="sv" style="color:var(--crayon-purple)">36.6M</div></div>
+        <div class="sumcard" style="--r:-.4deg"><div class="sl">平均耗时</div><div class="sv">312ms</div></div>
+      </div>
+      <div class="paper-card">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>供应商</th><th>请求数</th><th>Prompt</th><th>Completion</th><th>总 Tokens</th><th>Cache Hit</th><th>Cache Miss</th><th>命中率</th><th>平均耗时</th><th>最大耗时</th></tr></thead>
+            <tbody>
+              <tr><td>OpenAI</td><td>24,118</td><td>28.4M</td><td>19.2M</td><td>47.6M</td><td>30.1M</td><td>12.4M</td><td style="color:var(--ok)">70.8%</td><td>288ms</td><td>4,210ms</td></tr>
+              <tr><td>Anthropic</td><td>15,330</td><td>15.2M</td><td>11.0M</td><td>26.2M</td><td>12.6M</td><td>19.8M</td><td style="color:var(--ok)">38.9%</td><td>346ms</td><td>6,070ms</td></tr>
+              <tr><td>DeepSeek</td><td>6,752</td><td>8.3M</td><td>6.4M</td><td>14.7M</td><td>6.1M</td><td>9.3M</td><td>39.4%</td><td>301ms</td><td>5,120ms</td></tr>
+              <tr><td colspan="10" class="empty">（示意数据 · 非真实统计）</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ############ 设置 ############ -->
+    <section class="page" id="page-settings">
+      <div class="toolbar"><h2>设置 <small class="hand">连接的胶水 🩹</small></h2></div>
+      <div class="paper-card" style="max-width:680px">
+        <div class="field"><label>后端服务地址</label>
+          <input class="inp" value="http://localhost:8080" />
+        </div>
+        <div style="display:flex;gap:12px;align-items:center">
+          <button class="btn primary" onclick="toast('已保存 ✓')">保存</button>
+          <span class="tag saved">✓ 已保存</span>
+        </div>
+
+        <div class="divider" style="margin:26px 0 22px"></div>
+
+        <div class="field"><label>SSH 密钥配置 <span class="hint">（ed25519）</span></label></div>
+        <div class="field" style="margin-left:14px"><label class="hint">私钥文件路径</label><input class="inp" value="C:\Users\dev\.ssh\id_ed25519" /></div>
+        <div class="field" style="margin-left:14px"><label class="hint">公钥文件路径</label><input class="inp" value="C:\Users\dev\.ssh\id_ed25519.pub" /></div>
+        <div class="field" style="margin-left:2px"><label class="hint">SSH 公钥 Fingerprint</label>
+          <div class="mono" style="background:var(--paper-2);border:2px dashed rgba(55,55,40,.4);border-radius:var(--wobble-2);padding:10px 12px">SHA256:Y4hK…9qZt</div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center"><button class="btn teal" onclick="toast('密钥已保存 ✓')">保存密钥</button></div>
+        <div class="callout"><div class="hint">使用 ssh-keygen -t ed25519 生成密钥对，将<b>公钥</b>添加到服务端 admin_key 表后，即可用签名调用管理接口。</div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============ 抽屉模板 ============ -->
+<div class="overlay left" id="drawer">
+  <div class="drawer-panel" id="drawerPanel">
+    <div class="modal-head">
+      <span id="dr_title">新增供应商</span>
+      <span class="modal-x" onclick="closeDrawer()">✕</span>
+    </div>
+    <div class="modal-body" id="dr_body"></div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeDrawer()">取消</button>
+      <button class="btn primary" onclick="closeDrawer();toast('已保存 ✓')">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 弹窗模板 ============ -->
+<div class="overlay" id="modal">
+  <div class="modal">
+    <div class="modal-head"><span id="m_title">提示</span><span class="modal-x" onclick="closeModal()">✕</span></div>
+    <div class="modal-body" id="m_body"></div>
+    <div class="modal-foot" id="m_foot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast">已保存 ✓</div>
+
+<script>
+// ---------- 导航 ----------
+const pages=['overview','providers','models','apikeys','stats','settings','design','credentials','mappings'];
+function show(p){
+  document.querySelectorAll('.page').forEach(s=>s.classList.remove('show'));
+  const el=document.getElementById('page-'+p); if(el) el.classList.add('show');
+  document.querySelectorAll('.navitem').forEach(n=>{
+    n.classList.toggle('active', n.dataset.page===p);
+  });
+}
+document.querySelectorAll('.navitem,.design-link').forEach(n=>n.addEventListener('click',()=>go(n.dataset.page)));
+window.go=(p,name)=>{
+  show(p);
+  if(p==='credentials'&&name){const el=document.getElementById('cred_name');if(el)el.textContent=name;}
+  if(p==='mappings'&&name){const el=document.getElementById('map_name');if(el)el.textContent=name;}
+  window.scrollTo({top:0});
+};
+show('design');
+window.location.hash && show(window.location.hash.slice(1));
+
+// ---------- 供应商搜索 ----------
+function pvSearch(){const q=document.getElementById('pv_search').value.toLowerCase();
+  document.querySelectorAll('#pv_tbody tr').forEach((tr,i)=>{ if(i===0) return; tr.style.display=tr.textContent.toLowerCase().includes(q)?'':'none';});}
+
+// ---------- 抽屉 ----------
+const DRAWERS={
+  d_provider:`<div class="field"><label>名称</label><input class="inp" value="OpenAI"></div>
+             <div class="field"><label>Base URL</label><input class="inp mono" value="https://api.openai.com/v1"></div>`,
+  d_cred:`<div class="field"><label>名称（可选）</label><input class="inp" placeholder="例如 主账号"></div>
+          <div class="field"><label>API Key</label><input class="inp" placeholder="sk-…"></div>
+          <div class="row" style="display:flex;gap:14px"><div class="field" style="flex:1"><label>账号</label><input class="inp"></div><div class="field" style="flex:1"><label>密码</label><input class="inp" type="password"></div></div>
+          <div class="row" style="display:flex;gap:14px"><div class="field" style="flex:1"><label>优先级</label><input class="inp" type="number" value="0"></div><div class="field" style="flex:1"><label>状态</label><br><div class="toggle on" style="margin-top:8px"><div class="knob"></div></div></div></div>`,
+  d_model:`<div class="field"><label>名称</label><input class="inp" placeholder="gpt-4o"></div>
+           <div class="row" style="display:flex;gap:14px"><div class="field" style="flex:1"><label>优先级</label><input class="inp" type="number" value="1"></div><div class="field" style="flex:1"><label>超时秒数</label><input class="inp" type="number" value="30"></div></div>
+           <div class="field"><label>上下文长度</label><input class="inp" type="number" value="256000"></div>
+           <div class="field"><label>启用</label><br><div class="toggle on" style="margin-top:6px"><div class="knob"></div></div></div>`,
+  d_mapping:`<div class="field"><label>供应商</label><select class="sel"><option>OpenAI</option><option>Anthropic</option><option>DeepSeek</option></select></div>
+             <div class="field"><label>Provider Model ID</label><input class="inp mono" placeholder="gpt-4o-2024-08-06"></div>
+             <div class="field"><label>协议</label><div style="display:flex;gap:16px"><label class="check"><input type="checkbox" checked> openai</label><label class="check"><input type="checkbox"> anthropic</label><label class="check"><input type="checkbox"> responses</label></div></div>
+             <div class="row" style="display:flex;gap:14px"><div class="field" style="flex:1"><label>优先级</label><input class="inp" type="number" value="1"></div><div class="field" style="flex:1"><label>状态</label><br><select class="sel"><option>available</option><option>unavailable</option><option>deprecated</option></select></div></div>
+             <div class="row" style="display:flex;gap:14px"><div class="field" style="flex:1"><label>上下文长度</label><input class="inp" type="number" value="256000"></div><div class="field" style="flex:1"><label>启用</label><br><div class="toggle on" style="margin-top:8px"><div class="knob"></div></div></div></div>`,
+  d_apikey:`<div class="field"><label>名称</label><input class="inp" placeholder="前端网关"></div>
+            <div class="field"><label>状态</label><br><div class="toggle on" style="margin-top:6px"><div class="knob"></div></div></div>
+            <div class="hint" style="margin-top:10px;line-height:1.7">新建的 Key 由服务端自动生成（<span class="mono">fm-</span> + 64 位随机字符），保存后在一次弹窗中展示，供复制。</div>`,
+  d_demo:`<div class="field"><label>示例字段</label><input class="inp" placeholder="输入"></div>
+          <div class="field"><label>示例开关</label><br><div class="toggle on" style="margin-top:6px"><div class="knob"></div></div></div>
+          <div class="hint">右边的侧边抽屉，正是「新增/编辑」的宿主。</div>`
+};
+function openDrawer(name){const el=document.getElementById('drawer');el.classList.add('show');
+  document.getElementById('drawerPanel').style.transform='none';
+  document.getElementById('dr_body').innerHTML=DRAWERS[name]||DRAWERS.d_demo;}
+function closeDrawer(){document.getElementById('drawer').classList.remove('show');}
+document.getElementById('drawer').addEventListener('click',e=>{if(e.target.id==='drawer')closeDrawer();});
+
+// ---------- 弹窗 ----------
+const MODALS={
+  m_confirm:['确定删除？','将删除供应商「OpenAI」，其下的凭证也会一并删除。','<button class="btn" onclick="closeModal()">取消</button><button class="btn danger" onclick="closeModal();toast(\'已删除 🗑️\')">确定</button>'],
+  m_success:['搞定啦！','操作已成功完成。','<button class="btn primary" onclick="closeModal()">好</button>'],
+  m_test:['选择测试模型','选择一个模型发起连通性测试（示意）。','<button class="btn" onclick="closeModal()">取消</button><button class="btn teal" onclick="closeModal();toast(\'测试成功 · 280ms ⚡\')">测试</button>'],
+  m_import:['导入模型 — 供应商','选择要导入的模型（示意），已在其他供应商导入过的模型会标记「已导入」。','<button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast(\'已导入 3 个模型 ✅\')">确认导入</button>']
+};
+function openModal(name){
+  const d=MODALS[name]||MODALS.m_success;
+  document.getElementById('m_title').textContent=d[0];
+  document.getElementById('m_body').innerHTML=d[1];
+  document.getElementById('m_foot').innerHTML=d[2];
+  document.getElementById('modal').classList.add('show');
+}
+function closeModal(){document.getElementById('modal').classList.remove('show');}
+document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal();});
+
+// ---------- toast ----------
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1600);}
+
+// ---------- 嵌入手写样式修正 ----------
+document.addEventListener('click',()=>{});
+</script>
+</body>
+</html>

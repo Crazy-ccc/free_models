@@ -1,0 +1,50 @@
+@import '../../styles/variables.less';
+
+.doodle-message-root {
+  position: fixed;
+  bottom: 26px;
+  left: 0;
+  right: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.doodle-message {
+  pointer-events: auto;
+  padding: 10px 22px;
+  border: 2.5px solid @ink;
+  border-radius: @wobble-2;
+  box-shadow: @shadow-soft;
+  color: #ffffff;
+  font-family: @font-kuale;
+  font-size: 14px;
+  line-height: 1.5;
+  animation: doodleMessageIn @motion-mid @ease-out;
+}
+
+.doodle-message-success {
+  background-color: @crayon-green;
+}
+
+.doodle-message-error {
+  background-color: @crayon-red;
+}
+
+.doodle-message-warning {
+  background-color: @crayon-orange;
+}
+
+@keyframes doodleMessageIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

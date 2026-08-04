@@ -5,76 +5,152 @@
   flex-direction: column;
   width: @sidebar-width;
   height: 100%;
-  background-color: @bg-container;
-  border-right: 1px solid @outline-variant;
+  background-color: @paper-2;
+  // 右侧墨色虚线描边分隔
+  border-right: 3px solid fade(@ink, 90%);
+  border-image: linear-gradient(
+    180deg,
+    transparent 0 8px,
+    fade(@ink, 55%) 8px 13px,
+    transparent 13px 26px,
+    fade(@ink, 40%) 26px 30px,
+    transparent 30px
+  ) 1;
+  flex-shrink: 0;
+  padding: 26px 18px 20px;
+}
+
+// ===== 品牌区 =====
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px 18px;
+}
+
+.sidebar-brand-logo {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  line-height: 1;
+  background-color: @crayon-orange;
+  color: #fff;
+  border-radius: @wobble-1;
+  box-shadow: @shadow-hard;
+  transform: rotate(-4deg);
   flex-shrink: 0;
 }
 
-.sidebar-brand {
-  padding: @spacing-md;
-  font-family: @font-family;
-  font-size: @font-md;
-  font-weight: @font-weight-strong;
-  color: @on-surface;
-  line-height: 1.5;
-  border-bottom: 1px solid @outline-variant;
+.sidebar-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
+.sidebar-brand-name {
+  font-family: @font-kuale;
+  font-size: 20px;
+  line-height: 1.1;
+  color: @ink;
+  white-space: nowrap;
+}
+
+.sidebar-brand-sub {
+  font-family: @font-hand;
+  font-size: 11px;
+  color: @ink-2;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+// ===== 导航 =====
 .sidebar-nav {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: @spacing-xs 0;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .sidebar-nav-item {
-  height: @sidebar-item-height;
   display: flex;
   align-items: center;
-  padding: 0 @spacing-md;
-  font-family: @font-family;
-  font-size: @font-base;
-  color: @on-surface;
+  gap: 11px;
+  padding: 9px 12px;
+  border: 2.5px solid transparent;
+  border-radius: @wobble-1;
+  font-family: @font-kuale;
+  font-size: @font-md;
+  color: @ink-2;
   cursor: pointer;
   user-select: none;
-  transition: background-color @motion-fast @ease-in-out, color @motion-fast @ease-in-out;
+  transition: all 0.18s @ease-in-out;
+}
+
+.sidebar-nav-icon {
+  font-size: 19px;
+  line-height: 1;
+  filter: grayscale(0.3);
 }
 
 .sidebar-nav-item:hover {
-  background-color: @bg-hover;
+  background-color: fade(@paper-card, 55%);
+  transform: translateX(3px) rotate(-0.4deg);
 }
 
 .sidebar-nav-item.active {
-  background-color: @bg-selected;
-  color: @primary;
+  background-color: @paper-card;
+  color: @ink;
+  border-color: fade(@ink, 50%);
+  box-shadow: @shadow-hard;
+  transform: rotate(0.6deg);
   font-weight: @font-weight-strong;
 }
 
+.sidebar-nav-item.active .sidebar-nav-icon {
+  filter: none;
+}
+
+.sidebar-nav-divider {
+  height: 2px;
+  margin: 8px 6px;
+  background: repeating-linear-gradient(90deg, fade(@ink, 30%) 0 6px, transparent 6px 12px);
+}
+
+// ===== 底部连接状态 =====
 .sidebar-footer {
-  border-top: 1px solid @outline-variant;
+  margin-top: 12px;
 }
 
 .sidebar-status {
   display: flex;
   align-items: center;
-  padding: @spacing-md;
-  gap: @spacing-sm;
+  gap: 9px;
+  border: 2.5px solid fade(@ink, 25%);
+  border-radius: @wobble-2;
+  padding: 9px 12px;
+  color: @ink-2;
 }
 
 .sidebar-status-dot {
-  width: @badge-size;
-  height: @badge-size;
+  width: 12px;
+  height: 12px;
   border-radius: @radius-full;
-  background-color: @on-surface-disabled;
+  background-color: @crayon-red;
+  box-shadow: @shadow-hard;
   flex-shrink: 0;
 }
 
 .sidebar-status-dot.ok {
-  background-color: @success;
+  background-color: @crayon-green;
 }
 
 .sidebar-status-text {
-  font-family: @font-family;
-  font-size: @font-sm;
-  color: @on-surface-variant;
+  font-family: @font-kuale;
+  font-size: 13px;
+  line-height: 1;
+  color: @ink-2;
 }

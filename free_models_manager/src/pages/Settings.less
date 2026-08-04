@@ -1,7 +1,20 @@
 @import '../styles/variables.less';
 
 .settings-form {
+  background: @paper-card;
+  border: 3px solid @ink;
+  border-radius: @wobble-1;
+  box-shadow: @shadow-card;
   padding: @padding-card;
+  max-width: 680px;
+}
+
+.settings-section-title {
+  font-family: @font-hand;
+  font-size: 20px;
+  font-weight: @font-weight-regular;
+  color: @ink;
+  margin-bottom: 18px;
 }
 
 .settings-field {
@@ -11,15 +24,9 @@
 }
 
 .settings-label {
-  font-size: @font-base;
-  font-weight: 600;
-  color: @on-surface;
-  margin-bottom: 6px;
-}
-
-.settings-sublabel {
-  font-size: @font-sm;
-  color: @on-surface-variant;
+  font-family: @font-kuale;
+  font-size: 14px;
+  color: @ink-2;
   margin-bottom: 6px;
 }
 
@@ -41,27 +48,55 @@
 }
 
 .settings-divider {
-  height: 1px;
-  background: @outline-variant;
-  margin: 32px 0;
+  height: 0;
+  border-top: 2.5px dashed rgba(55, 55, 40, 0.3);
+  margin: 26px 0 22px;
 }
 
 .settings-fingerprint {
   width: 100%;
-  padding: 12px 16px;
-  background: @bg-layout;
-  border: 1px @outline-variant;
-  border-radius: @radius-default;
+  padding: 10px 12px;
+  background: @paper-2;
+  border: 2px dashed rgba(55, 55, 40, 0.4);
+  border-radius: @wobble-2;
   font-family: @font-family-code;
-  font-size: @font-sm;
-  color: @on-surface-variant;
+  font-size: 13px;
+  color: @ink-2;
   word-break: break-all;
   line-height: 1.6;
 }
 
+.settings-error-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 16px;
+  background: @paper-card;
+  border: 2.5px solid @crayon-red;
+  border-radius: @wobble-1;
+  box-shadow: @shadow-hard;
+}
+
+.settings-error-text {
+  flex: 1;
+  font-family: @font-kuale;
+  font-size: 13px;
+  color: @crayon-red;
+  line-height: 1.5;
+}
+
+.settings-error-close {
+  flex-shrink: 0;
+}
+
 .settings-hint {
-  margin-top: 8px;
-  font-size: @font-sm;
-  color: @on-surface-tertiary;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 2.5px dashed @crayon-purple;
+  border-radius: @wobble-1;
+  background: rgba(149, 99, 196, 0.08);
+  font-size: 13px;
+  color: @ink-2;
   line-height: 1.6;
 }

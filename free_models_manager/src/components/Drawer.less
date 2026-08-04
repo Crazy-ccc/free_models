@@ -16,7 +16,7 @@
 .drawer-overlay {
   position: absolute;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.45);
+  background-color: fade(@ink, 40%);
   opacity: 0;
   transition: opacity @motion-slow @ease-in-out;
 }
@@ -25,6 +25,7 @@
   opacity: 1;
 }
 
+// 右侧滑入纸片面板
 .drawer-panel {
   position: absolute;
   top: 0;
@@ -33,50 +34,50 @@
   width: 400px;
   display: flex;
   flex-direction: column;
-  background-color: @bg-container;
-  box-shadow: @shadow-drawer-left;
+  background-color: @paper-card;
+  border-left: 3.5px solid @ink;
+  box-shadow: @shadow-soft;
   transform: translateX(100%);
-  transition: transform @motion-slow @ease-in-out;
+  transition: transform @motion-slow @ease-out;
 }
 
 .drawer-root.open .drawer-panel {
   transform: translateX(0);
 }
 
+// 头部：草书标题 + 蜡笔红关闭
 .drawer-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: @spacing-md;
-  border-bottom: 1px solid @outline-variant;
+  padding: @spacing-md @spacing-lg;
+  border-bottom: 2.5px dashed fade(@ink, 35%);
   flex-shrink: 0;
 }
 
 .drawer-title {
-  font-family: @font-family;
-  font-size: @font-md;
-  font-weight: @font-weight-strong;
-  color: @on-surface;
-  line-height: 1.5;
+  font-family: @font-hand;
+  font-size: @font-lg;
+  color: @ink;
+  line-height: 1.4;
 }
 
 .drawer-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  font-size: @font-md;
-  color: @on-surface-variant;
-  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  font-size: 22px;
   line-height: 1;
-  border-radius: @radius-md;
-  transition: background-color @motion-fast @ease-in-out, color @motion-fast @ease-in-out;
+  color: @crayon-red;
+  cursor: pointer;
+  transition: transform @motion-fast @ease-in-out, color @motion-fast @ease-in-out;
 }
 
 .drawer-close:hover {
-  background-color: @bg-hover;
-  color: @on-surface;
+  color: @crayon-red;
+  transform: rotate(-8deg) scale(1.1);
 }
 
 .drawer-body {
@@ -85,13 +86,14 @@
   padding: @spacing-lg;
 }
 
+// 底部虚线分隔 + 操作按钮区
 .drawer-footer {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: @spacing-sm;
-  padding: @spacing-sm @spacing-lg;
-  border-top: 1px solid @outline-variant;
+  padding: @spacing-md @spacing-lg;
+  border-top: 2.5px dashed fade(@ink, 35%);
   flex-shrink: 0;
 }
 

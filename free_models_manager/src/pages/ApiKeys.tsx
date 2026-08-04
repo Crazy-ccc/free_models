@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { CopyOutlined } from '@ant-design/icons';
-import { message, Modal } from 'antd';
 import Toolbar from '../components/Toolbar';
 import Toggle from '../components/Toggle';
 import Drawer from '../components/Drawer';
+import {
+  DoodleButton,
+  DoodleInput,
+  DoodleMessage,
+  DoodleModal,
+  DoodleTag,
+} from '../components/doodle';
 import { invoke } from '@tauri-apps/api/core';
 import type { ApiKey } from '../types';
 import './ApiKeys.less';
@@ -74,47 +79,57 @@ function ApiKeys() {
   };
 
   const handleSave = async () => {
-    if (editingKey) {
-      const payload = {
-        name: formName,
-        key_value: formKeyValue,
-        is_active: formIsActive,
-      };
-      await invoke<ApiKey>('update_api_key', { serverUrl, id: editingKey.id, data: payload });
-      setDrawerOpen(false);
-      loadApiKeys();
-    } else {
-      const payload = {
-        name: formName,
-        is_active: formIsActive,
-      };
-      const result = await invoke<ApiKey>('create_api_key', { serverUrl, data: payload });
-      setDrawerOpen(false);
-      Modal.info({
-        title: 'API Key 创建成功',
-        content: (
-          <div>
-            <p>请立即复制保存此 Key，关闭后将不再显示：</p>
-            <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: 4, fontFamily: 'monospace', wordBreak: 'break-all', userSelect: 'all' }}>{result.key_value}</div>
-          </div>
-        ),
-        okText: '已复制保存',
-      });
-      loadApiKeys();
+    try {
+      if (editingKey) {
+        const payload = {
+          name: formName,
+          key_value: formKeyValue,
+          is_active: formIsActive,
+        };
+        await invoke<ApiKey>('update_api_key', { serverUrl, id: editingKey.id, data: payload });
+        setDrawerOpen(false);
+        loadApiKeys();
+      } else {
+        const payload = {
+          name: formName,
+          is_active: formIsActive,
+        };
+        const result = await invoke<ApiKey>('create_api_key', { serverUrl, data: payload });
+        setDrawerOpen(false);
+        DoodleModal.info({
+          title: 'API Key 创建成功',
+          content: (
+            <div>
+              <p>请立即复制保存此 Key，关闭后将不再显示：</p>
+              <div className="api-key-result">{result.key_value}</div>
+            </div>
+          ),
+          okText: '已复制保存',
+        });
+        loadApiKeys();
+      }
+    } catch (e) {
+      console.error(e);
+      DoodleMessage.error('保存失败');
     }
   };
 
   const handleDeleteRow = async (key: ApiKey) => {
-    Modal.confirm({
+    DoodleModal.confirm({
       title: '确定删除？',
       content: `将删除 API Key「${key.name}」`,
       okText: '确定',
       cancelText: '取消',
-      okButtonProps: { danger: true },
+      danger: true,
       onOk: async () => {
+      try {
         await invoke('delete_api_key', { serverUrl, id: key.id });
         loadApiKeys();
-      },
+      } catch (e) {
+        console.error(e);
+        DoodleMessage.error('删除失败');
+      }
+    },
     });
   };
 
@@ -134,7 +149,6 @@ function ApiKeys() {
       setApiKeys((prev) =>
         prev.map((k) => (k.id === key.id ? { ...k, is_active: prevState } : k))
       );
-    } finally {
       loadApiKeys();
     }
   };
@@ -143,14 +157,14 @@ function ApiKeys() {
     e.stopPropagation();
     if (key) {
       navigator.clipboard.writeText(key);
-      message.success('已复制到剪贴板');
+      DoodleMessage.success('已复制到剪贴板');
     }
   };
 
   return (
     <div className="api-keys-page">
       <Toolbar title="API Keys" showSearch={true} searchValue={searchQuery} onSearchChange={setSearchQuery}>
-        <button className="ant-btn ant-btn-primary" onClick={openAdd}>+ 新增</button>
+        <DoodleButton type="primary" onClick={openAdd}>+ 新增</DoodleButton>
       </Toolbar>
       <div className="api-keys-table-wrap">
         <table className="api-keys-table">
@@ -173,11 +187,11 @@ function ApiKeys() {
                 <tr key={k.id}>
                   <td className="clickable-name" onClick={() => openEdit(k)}>{k.name}</td>
                   <td>
-                    <span className="api-keys-key">{maskKey(k.key_value)}</span>
-                    <CopyOutlined
-                      style={{ cursor: 'pointer', color: '#1677FF', marginLeft: 8 }}
-                      onClick={(e) => handleCopy(e as any, k.key_value)}
-                    />
+                    <DoodleTag className="api-keys-mask">{maskKey(k.key_value)}</DoodleTag>
+                    <svg className="api-keys-copy" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" onClick={(e) => handleCopy(e as any, k.key_value)} style={{ cursor: 'pointer', verticalAlign: 'middle' }}>
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
                   </td>
                   <td>
                     <div className="toggle-wrap">
@@ -186,8 +200,10 @@ function ApiKeys() {
                   </td>
                   <td className="api-keys-time">{formatTime(k.created_time)}</td>
                   <td>
-                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openEdit(k); }}>编辑</button>
-                    <button className="ant-btn ant-btn-dangerous" onClick={(e) => { e.stopPropagation(); handleDeleteRow(k); }}>删除</button>
+                    <div className="act">
+                      <DoodleButton size="small" onClick={(e) => { e.stopPropagation(); openEdit(k); }}>编辑</DoodleButton>
+                      <DoodleButton size="small" type="danger" onClick={(e) => { e.stopPropagation(); handleDeleteRow(k); }}>删除</DoodleButton>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -204,8 +220,7 @@ function ApiKeys() {
         <div className="api-keys-form">
           <div className="form-field">
             <label>名称</label>
-            <input
-              className="ant-input"
+            <DoodleInput
               type="text"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
@@ -216,20 +231,20 @@ function ApiKeys() {
           <div className="form-field">
             <label>Key Value</label>
             <div className="key-input-wrap">
-              <input
-                className="ant-input"
+              <DoodleInput
                 type={showKeyValue ? 'text' : 'password'}
                 value={formKeyValue}
                 disabled
                 placeholder="输入 Key Value"
               />
-              <button
-                type="button"
-                className="ant-btn ant-btn-text key-toggle-btn"
+              <DoodleButton
+                type="ghost"
+                size="small"
+                className="key-toggle-btn"
                 onClick={() => setShowKeyValue(!showKeyValue)}
               >
                 {showKeyValue ? '隐藏' : '显示'}
-              </button>
+              </DoodleButton>
             </div>
           </div>
           )}

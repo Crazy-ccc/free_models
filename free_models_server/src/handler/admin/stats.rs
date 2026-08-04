@@ -117,6 +117,11 @@ pub async fn usage_log_stats(
     state: web::Data<AppState>,
     query: web::Query<UsageLogStatsQuery>,
 ) -> HttpResponse {
+    const ALLOWED_GROUP_BY: &[&str] = &["provider", "model", "api_key", "day", "credential", "provider_model"];
+    if !ALLOWED_GROUP_BY.contains(&query.group_by.as_str()) {
+        return response::bad_request("unsupported group_by, must be one of: provider, model, api_key, day, credential, provider_model");
+    }
+
     match state.database.usage_logs.query_stats(
         &query.group_by,
         query.start_time.as_deref(),

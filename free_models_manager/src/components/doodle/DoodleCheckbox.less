@@ -1,0 +1,49 @@
+@import '../../styles/variables.less';
+
+.doodle-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-family: @font-family;
+  font-size: @font-base;
+  color: @ink;
+  user-select: none;
+  transition: transform @motion-fast @ease-in-out;
+
+  &:hover .doodle-checkbox-box {
+    transform: rotate(-4deg);
+  }
+}
+
+.doodle-checkbox-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 2.5px solid @ink;
+  border-radius: @radius-sm;
+  background-color: transparent;
+  transition: transform @motion-fast @ease-in-out, background-color @motion-fast @ease-in-out;
+
+  svg {
+    display: block;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.doodle-checkbox-checked .doodle-checkbox-box {
+  background-color: @crayon-orange;
+}
+
+.doodle-checkbox-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.doodle-checkbox-label {
+  line-height: 1.4;
+}

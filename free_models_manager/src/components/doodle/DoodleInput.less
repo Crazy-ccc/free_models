@@ -1,0 +1,71 @@
+@import '../../styles/variables.less';
+
+.doodle-input {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  height: @control-height;
+  padding: @padding-input;
+  background-color: transparent;
+  text-align: left;
+
+  input {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    border: none;
+    border-bottom: 2.5px dotted @outline;
+    border-radius: 0;
+    background-color: transparent;
+    color: @ink;
+    font-family: @font-family;
+    font-size: @font-base;
+    line-height: 1.5715;
+    padding: 0;
+    outline: none;
+    transition: border-color @motion-fast @ease-in-out;
+
+    &:focus {
+      border-bottom-color: @crayon-blue;
+    }
+
+    &::placeholder {
+      color: @ink-3;
+    }
+
+    &:disabled {
+      color: @on-surface-disabled;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.doodle-input-small {
+  height: @control-height-sm;
+  padding: 2px 6px;
+
+  input {
+    font-size: @font-sm;
+  }
+}
+
+.doodle-input-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  font-size: 12px;
+  color: @ink-3;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: color @motion-fast @ease-in-out, transform @motion-fast @ease-in-out;
+  flex-shrink: 0;
+
+  &:hover {
+    color: @ink;
+    transform: rotate(-8deg);
+  }
+}

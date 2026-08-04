@@ -1,4 +1,30 @@
 @import './variables.less';
+@import './cjk-fonts.less';
+
+// ===== 拉丁手写字体 =====
+@font-face {
+  font-family: 'Gochi Hand';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/gochi-hand.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Comic Neue';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/comic-neue-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Comic Neue';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/comic-neue-700.woff2') format('woff2');
+}
 
 * {
   box-sizing: border-box;
@@ -20,6 +46,8 @@ body {
   line-height: 1.5715;
   color: @on-surface;
   background-color: @bg-layout;
+  background-image: radial-gradient(rgba(120, 96, 60, 0.1) 1px, transparent 1.3px);
+  background-size: 22px 22px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -29,8 +57,8 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -39,22 +67,22 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: @outline;
-  border-radius: 3px;
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: @on-surface-disabled;
 }
 
-// ===== Ant 风格 Button =====
+// ===== Ant 风格 Button（涂鸦化） =====
 .ant-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: @control-height;
   padding: @padding-button;
-  border: 1px solid @outline;
-  border-radius: @radius-default;
+  border: 2.5px solid @ink;
+  border-radius: @wobble-2;
   background-color: @bg-container;
   color: @on-surface;
   font-family: @font-family;
@@ -62,61 +90,71 @@ body {
   font-weight: @font-weight-regular;
   line-height: 1;
   cursor: pointer;
+  box-shadow: @shadow-hard;
   transition: all @motion-fast @ease-in-out;
   user-select: none;
 }
 
 .ant-btn:hover {
-  color: @primary-hover;
-  border-color: @primary-hover;
+  color: @primary;
+  border-color: @ink;
+  transform: translateY(-1px) rotate(-0.5deg);
+  box-shadow: 0 7px 0 -2px rgba(82, 63, 42, 0.2);
+}
+
+.ant-btn:active {
+  transform: translateY(2px);
+  box-shadow: none;
 }
 
 .ant-btn-primary {
   background-color: @primary;
-  border-color: @primary;
+  border-color: @ink;
   color: #ffffff;
-  box-shadow: 0 2px 0 rgba(5, 145, 255, 0.06);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
 }
 
 .ant-btn-primary:hover {
   background-color: @primary-hover;
-  border-color: @primary-hover;
+  border-color: @ink;
   color: #ffffff;
 }
 
 .ant-btn-primary:active {
   background-color: @primary-active;
-  border-color: @primary-active;
+  border-color: @ink;
   color: #ffffff;
 }
 
 .ant-btn-dangerous {
   color: @error;
-  border-color: @error;
+  border-color: @ink;
   background-color: @bg-container;
 }
 
 .ant-btn-dangerous:hover {
   color: #ffffff;
   background-color: @error;
-  border-color: @error;
+  border-color: @ink;
 }
 
 .ant-btn-text {
   background: transparent;
   border-color: transparent;
+  box-shadow: none;
   color: @on-surface-variant;
 }
 
 .ant-btn-text:hover {
   background-color: @bg-hover;
-  color: @primary-hover;
+  color: @primary;
   border-color: transparent;
 }
 
 .ant-btn-link {
   background: transparent;
   border-color: transparent;
+  box-shadow: none;
   color: @primary;
   padding: 0;
   height: auto;
@@ -127,7 +165,7 @@ body {
   border-color: transparent;
 }
 
-// ===== Ant 风格 Input =====
+// ===== Ant 风格 Input（下划线式） =====
 input,
 select,
 textarea,
@@ -135,10 +173,11 @@ textarea,
   width: 100%;
   height: @control-height;
   padding: @padding-input;
-  background-color: @bg-container;
+  background-color: transparent;
   color: @on-surface;
-  border: 1px solid @outline;
-  border-radius: @radius-default;
+  border: none;
+  border-bottom: 2.5px dotted @outline;
+  border-radius: 0;
   font-family: @font-family;
   font-size: @font-base;
   line-height: 1.5715;
@@ -150,15 +189,15 @@ input:focus,
 select:focus,
 textarea:focus,
 .ant-input:focus {
-  border-color: @primary;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  border-bottom-color: @primary;
+  box-shadow: none;
 }
 
 input:disabled,
 select:disabled,
 textarea:disabled {
   color: @on-surface-disabled;
-  background-color: @bg-disabled;
+  background-color: transparent;
   cursor: not-allowed;
 }
 
@@ -173,7 +212,7 @@ textarea {
   padding: 8px 11px;
 }
 
-// ===== Ant 风格 Table =====
+// ===== Ant 风格 Table（墨线框 + 虚线行） =====
 .ant-table {
   width: 100%;
   border-collapse: separate;
@@ -181,6 +220,9 @@ textarea {
   font-size: @font-base;
   color: @on-surface;
   background: @bg-container;
+  border: 3px solid @ink;
+  border-radius: @wobble-1;
+  box-shadow: @shadow-hard;
 
   thead th {
     padding: @padding-table-header;
@@ -189,12 +231,12 @@ textarea {
     font-weight: @font-weight-strong;
     font-size: @font-base;
     text-align: left;
-    border-bottom: 1px solid @outline-variant;
+    border-bottom: 2.5px dotted @outline-variant;
   }
 
   tbody td {
     padding: @padding-table-cell;
-    border-bottom: 1px solid @outline-variant;
+    border-bottom: 2px dotted @outline-variant;
     color: @on-surface;
     font-size: @font-base;
   }
@@ -212,7 +254,7 @@ textarea {
   }
 }
 
-// ===== Ant 风格 Tag =====
+// ===== Ant 风格 Tag（蜡笔色块 + 墨色边框） =====
 .ant-tag {
   display: inline-flex;
   align-items: center;
@@ -220,89 +262,90 @@ textarea {
   padding: 0 8px;
   font-size: @font-sm;
   line-height: 20px;
-  border-radius: @radius-md;
-  border: 1px solid @outline;
+  border-radius: @wobble-2;
+  border: 2.5px solid @ink;
   background-color: @bg-container;
   color: @on-surface;
+  box-shadow: 0 3px 0 -1px rgba(82, 63, 42, 0.22);
 }
 
 .ant-tag-success {
-  color: @green-7;
-  background: @success-bg;
-  border-color: @success-border;
+  color: #ffffff;
+  background: @success;
+  border-color: @ink;
 }
 
 .ant-tag-error {
-  color: @error;
-  background: @error-bg;
-  border-color: @error-border;
+  color: #ffffff;
+  background: @error;
+  border-color: @ink;
 }
 
 .ant-tag-warning {
-  color: @warning;
-  background: @warning-bg;
-  border-color: @warning-border;
+  color: #ffffff;
+  background: @warning;
+  border-color: @ink;
 }
 
 .ant-tag-blue {
-  color: @blue-7;
-  background: @info-bg;
-  border-color: @info-border;
+  color: #ffffff;
+  background: @blue-7;
+  border-color: @ink;
 }
 
 .ant-tag-purple {
-  color: @purple;
-  background: @purple-bg;
-  border-color: #D3ADF7;
+  color: #ffffff;
+  background: @purple;
+  border-color: @ink;
 }
 
 .ant-tag-cyan {
-  color: @cyan;
-  background: @cyan-bg;
-  border-color: #87E8DE;
+  color: #ffffff;
+  background: @cyan;
+  border-color: @ink;
 }
 
 .ant-tag-orange {
-  color: @orange;
-  background: @orange-bg;
-  border-color: #FFD591;
+  color: #ffffff;
+  background: @orange;
+  border-color: @ink;
 }
 
 .ant-tag-geekblue {
-  color: @geekblue;
-  background: @geekblue-bg;
-  border-color: #ADC6FF;
+  color: #ffffff;
+  background: @geekblue;
+  border-color: @ink;
 }
 
 .ant-tag-default {
-  color: @on-surface-variant;
-  background: @bg-container;
-  border-color: @outline;
+  color: @on-surface;
+  background: @paper-2;
+  border-color: @ink;
 }
 
-// ===== Ant 风格 Card =====
+// ===== Ant 风格 Card（纸片） =====
 .ant-card {
   background-color: @bg-container;
-  border-radius: @radius-lg;
+  border-radius: @wobble-1;
   padding: @padding-card;
-  box-shadow: @shadow-card;
-  border: 1px solid @outline-variant;
+  box-shadow: @shadow-hard;
+  border: 3px solid @ink;
 }
 
 .ant-card-bordered {
-  border: 1px solid @outline-variant;
+  border: 3px solid @ink;
 }
 
 // ===== Ant 风格 Alert =====
 .ant-alert {
   padding: 8px 12px;
-  border-radius: @radius-default;
+  border-radius: @wobble-2;
   font-size: @font-base;
   line-height: 1.5715;
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid transparent;
+  border: 2.5px solid transparent;
 }
 
 .ant-alert-success {
@@ -342,12 +385,75 @@ textarea {
   height: 100%;
   overflow: auto;
   background-color: @bg-layout;
+  padding: 26px 34px 48px;
 }
 
 .page-placeholder {
   padding: @spacing-lg;
   color: @on-surface-variant;
   font-size: @font-md;
+}
+
+// ===== 通用涂鸦工具类 =====
+
+// 手写波浪下划线（蜡笔橙）
+.doodle-squiggle {
+  position: relative;
+  display: inline-block;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -10px;
+    height: 12px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='12' viewBox='0 0 120 12'><path d='M0 8 Q8 2 16 8 T32 8 T48 8 T64 8 T80 8 T96 8 T112 8 T120 8' fill='none' stroke='%23EB8A2F' stroke-width='3' stroke-linecap='round'/></svg>");
+    background-repeat: repeat-x;
+    background-size: 120px 12px;
+    opacity: 0.85;
+  }
+}
+
+// 纸片卡片
+.doodle-paper-card {
+  background: @paper-card;
+  border: 3px solid @ink;
+  border-radius: @wobble-1;
+  box-shadow: @shadow-hard;
+  padding: 18px 20px;
+}
+
+// 涂鸦按钮基础
+.doodle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: @control-height;
+  padding: @padding-button;
+  border: 2.5px solid @ink;
+  border-radius: @wobble-2;
+  background-color: @bg-container;
+  color: @on-surface;
+  font-family: @font-family;
+  font-size: @font-base;
+  font-weight: @font-weight-regular;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: @shadow-hard;
+  transition: all @motion-fast @ease-in-out;
+  user-select: none;
+
+  &:hover {
+    transform: translateY(-1px) rotate(-0.5deg);
+    box-shadow: 0 7px 0 -2px rgba(82, 63, 42, 0.2);
+  }
+
+  &:active {
+    transform: translateY(2px);
+    box-shadow: none;
+  }
 }
 
 @keyframes fadeUp {

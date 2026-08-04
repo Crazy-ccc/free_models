@@ -15,39 +15,61 @@
 
 .overview-loading {
   padding: 24px;
-  color: @on-surface-variant;
+  color: @ink-3;
   font-size: @font-base;
+  font-family: @font-kuale;
 }
 
+// ===== 状态卡：纸片卡 =====
 .stats-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  gap: 18px;
+  margin-bottom: 20px;
 }
 
 .stat-block {
-  background: @bg-container;
-  border-radius: @radius-lg;
-  padding: @padding-card;
-  box-shadow: @shadow-card;
-  border: 1px solid @outline-variant;
+  background: @paper-card;
+  border: 3px solid @ink;
+  border-radius: @wobble-1;
+  box-shadow: @shadow-hard;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
+  transform: rotate(var(--tilt, 0deg));
+  transition: transform @motion-mid @ease-out, box-shadow @motion-mid @ease-out;
   animation: fadeUp 0.4s ease;
   animation-delay: 0.05s;
+
+  &:nth-child(odd) {
+    --tilt: -0.8deg;
+  }
+
+  &:nth-child(even) {
+    --tilt: 0.7deg;
+  }
+
+  &:hover {
+    transform: rotate(0deg) translateY(-3px);
+  }
 }
 
 .stat-label {
-  font-size: @font-sm;
-  color: @on-surface-variant;
+  font-family: @font-kuale;
+  font-size: 14px;
+  color: @ink-2;
   margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .stat-value {
-  font-size: @font-xl;
-  font-weight: 600;
-  color: @on-surface;
-  line-height: 1.2;
+  font-family: @font-en;
+  font-size: 40px;
+  line-height: 1.1;
+  margin: 4px 0 2px;
+  color: @ink;
   display: flex;
   align-items: center;
   gap: @spacing-sm;
@@ -58,112 +80,53 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: 2px 6px;
+  font-size: 13px;
+  color: @ink-2;
+}
+
+.stat-sub {
+  font-size: 13px;
+  color: @ink-2;
+  margin-right: 4px;
 }
 
 .stat-figure {
-  font-size: @font-lg;
-  font-weight: 700;
+  font-family: @font-en;
+  font-size: 19px;
+  font-weight: @font-weight-strong;
   line-height: 1.2;
 }
 
 .stat-total {
-  color: @on-surface;
+  color: @ink;
 }
 
 .stat-active {
-  color: @success;
+  color: @crayon-green;
 }
 
 .stat-inactive {
-  color: @warning;
-}
-
-.stat-divider {
-  color: @on-surface-disabled;
-  font-size: @font-sm;
-  margin: 0 2px;
-}
-
-.stat-sub {
-  font-size: @font-sm;
-  color: @on-surface-tertiary;
-  margin-right: 4px;
-}
-
-.stat-value.status-text {
-  font-size: @font-base;
-  font-weight: 500;
-  color: @success;
+  color: @crayon-red;
 }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
+  display: inline-block;
+  box-shadow: @shadow-hard;
   background-color: @on-surface-disabled;
 }
 
 .status-dot.ok {
-  background-color: @success;
+  background-color: @crayon-green;
 }
 
-.penalties {
-  margin-top: 24px;
-  animation: fadeUp 0.4s ease;
-  animation-delay: 0.15s;
+.status-dot.down {
+  background-color: @crayon-red;
 }
 
-.penalties-title {
-  font-size: @font-md;
-  font-weight: 600;
-  color: @on-surface;
-  margin-bottom: 16px;
-}
-
-.penalties-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.penalty-row {
-  padding: 12px 0;
-  border-bottom: 1px solid @outline-variant;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.penalty-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.penalty-model {
-  font-size: @font-base;
-  color: @on-surface;
-}
-
-.penalty-sep {
-  color: @on-surface-disabled;
-}
-
-.penalty-provider {
-  font-size: @font-base;
-  color: @on-surface-variant;
-}
-
-.penalty-remaining {
-  font-size: @font-sm;
-  color: @error;
-}
-
-.penalties-empty {
-  font-size: @font-base;
-  color: @on-surface-variant;
-  padding: 16px 0;
-}
-
+// ===== 昨日 Token 表：纸片卡 + 蜡笔波浪表头 =====
 .yesterday-stats {
   margin-top: 24px;
   animation: fadeUp 0.4s ease;
@@ -171,43 +134,52 @@
 }
 
 .yesterday-section {
-  background: @bg-container;
-  border-radius: @radius-lg;
-  box-shadow: @shadow-card;
-  border: 1px solid @outline-variant;
   overflow-x: auto;
 }
 
 .yesterday-title {
-  font-size: @font-md;
-  font-weight: 600;
-  color: @on-surface;
-  padding: @padding-card;
-  padding-bottom: 0;
+  font-family: @font-hand;
+  font-size: 21px;
+  color: @ink;
+  padding: 0 2px 10px;
   margin-bottom: 8px;
 }
 
 .yesterday-table {
   width: 100%;
+  min-width: 640px;
   border-collapse: collapse;
 
-  th {
-    padding: 10px 16px;
-    font-size: @font-sm;
-    font-weight: 600;
-    color: @on-surface;
-    background: @bg-container;
-    border-bottom: 1px solid @outline-variant;
+  thead th {
+    font-family: @font-kuale;
+    font-weight: @font-weight-regular;
+    font-size: 14px;
+    color: @ink;
     text-align: left;
+    padding: 10px 14px 2px;
     white-space: nowrap;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 0;
+      height: 4px;
+      background-repeat: repeat-x;
+      background-size: 8px 4px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='4' viewBox='0 0 8 4'><path d='M0 2 Q2 0 4 2 T8 2' fill='none' stroke='%237FB24A' stroke-width='1.4'/></svg>");
+    }
   }
 
   td {
-    padding: 10px 16px;
-    font-size: @font-base;
-    color: @on-surface;
-    border-bottom: 1px solid @outline-variant;
+    padding: 10px;
+    font-size: 14px;
+    color: @ink;
+    border-bottom: 2px dotted @outline;
     white-space: nowrap;
+    vertical-align: middle;
   }
 
   td:first-child {
@@ -225,6 +197,79 @@
 
 .yesterday-empty {
   text-align: center;
-  color: @on-surface-tertiary;
-  padding: 24px 16px;
+  color: @ink-3;
+  padding: 26px 16px !important;
+  font-family: @font-hand;
+  font-size: 18px;
+}
+
+// ===== 惩罚清单：纸片卡 =====
+.penalties {
+  margin-top: 24px;
+  animation: fadeUp 0.4s ease;
+  animation-delay: 0.15s;
+}
+
+.penalties-title {
+  font-family: @font-hand;
+  font-size: 21px;
+  color: @ink;
+  margin-bottom: 12px;
+}
+
+.penalties-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.penalty-row {
+  padding: 9px 4px;
+  border-bottom: 2px dotted @outline;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.penalty-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.penalty-model {
+  font-family: @font-kuale;
+  font-size: 15px;
+  color: @crayon-blue;
+}
+
+.penalty-sep {
+  color: @ink-3;
+}
+
+.penalty-provider {
+  font-size: 13px;
+  color: @ink-2;
+}
+
+.penalty-remaining {
+  margin-left: auto;
+  font-size: 12px;
+  color: @crayon-orange;
+}
+
+.penalties-empty {
+  font-size: 14px;
+  color: @ink-3;
+  padding: 16px 0;
+  font-family: @font-kuale;
+}
+
+@media (max-width: 900px) {
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }

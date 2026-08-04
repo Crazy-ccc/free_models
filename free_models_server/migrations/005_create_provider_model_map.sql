@@ -44,3 +44,8 @@ ALTER TABLE model_config DROP COLUMN model_id;
 
 -- 为 model_config 新增 is_active 字段
 ALTER TABLE model_config ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE AFTER priority;
+
+
+ALTER TABLE usage_log_daily ADD COLUMN provider_credential_id INT NULL AFTER provider_config_id;
+CREATE INDEX idx_provider_credential_id ON usage_log_daily (provider_credential_id);
+

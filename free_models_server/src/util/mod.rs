@@ -6,4 +6,5 @@ pub mod encryption;
 pub mod proxy_ssrf;
 pub mod proxy_types;
 pub mod usage_log_collector;
+pub mod stream_usage_scanner;
 pub mod model_scheduler;

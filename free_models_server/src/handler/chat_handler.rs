@@ -96,7 +96,7 @@ async fn handle_chat_request(
     let is_stream = body.get("stream").and_then(|v| v.as_bool()).unwrap_or(false);
     let api_key_ctx = proxy_service::ApiKeyContext { id: api_key_id, name: api_key_name };
     let forward_meta = proxy_service::ForwardMeta { protocol, is_stream, start_time };
-    proxy_service::proxy_chat_completion_inner(&state.client, &body, &models, &state.priority_penalty, &state.cache_affinity, api_key_ctx, forward_meta)
+    proxy_service::proxy_chat_completion_inner(&state.client, &body, &models, &state.priority_penalty, &state.cache_affinity, api_key_ctx, forward_meta, &state.ssrf_checker)
         .await
         .unwrap_or_else(|response| response)
 }

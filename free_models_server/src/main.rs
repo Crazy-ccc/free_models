@@ -55,6 +55,10 @@ async fn main() -> std::io::Result<()> {
         config.cache_affinity_max_capacity,
         config.cache_affinity_ttl,
     );
+    let ssrf_checker = util::proxy_ssrf::SsrfChecker::new(
+        config.ssrf_cache_max_capacity,
+        std::time::Duration::from_secs(300),
+    );
     let app_state = web::Data::new(AppState {
         database,
         scheduler_cache: SchedulerCache::new(cache_store, config.redis_cache_ttl_model),
@@ -62,6 +66,7 @@ async fn main() -> std::io::Result<()> {
         priority_penalty: priority_penalty.clone(),
         api_key_cache,
         cache_affinity,
+        ssrf_checker,
         encryption_key: config.encryption_key,
     });
     let log_collector = init_usage_log_collector(usage_log_store.clone());

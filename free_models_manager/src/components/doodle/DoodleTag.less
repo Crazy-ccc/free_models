@@ -1,0 +1,52 @@
+@import '../../styles/variables.less';
+
+.doodle-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border: 2.5px solid @ink;
+  border-radius: @wobble-2;
+  background-color: @paper-2;
+  color: @ink;
+  font-family: @font-kuale;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: 0 3px 0 -1px rgba(82, 63, 42, 0.22);
+}
+
+.doodle-tag-available,
+.doodle-tag-success {
+  background-color: @crayon-green;
+  color: #ffffff;
+}
+
+.doodle-tag-unavailable,
+.doodle-tag-error {
+  background-color: @crayon-red;
+  color: #ffffff;
+}
+
+.doodle-tag-deprecated,
+.doodle-tag-purple {
+  background-color: @crayon-purple;
+  color: #ffffff;
+}
+
+.doodle-tag-warning,
+.doodle-tag-orange {
+  background-color: @crayon-orange;
+  color: #ffffff;
+}
+
+.doodle-tag-info,
+.doodle-tag-geekblue {
+  background-color: @crayon-blue;
+  color: #ffffff;
+}
+
+.doodle-tag-cyan {
+  background-color: @crayon-teal;
+  color: #ffffff;
+}

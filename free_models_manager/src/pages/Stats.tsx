@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Toolbar from '../components/Toolbar';
+import DoodleButton from '../components/doodle/DoodleButton';
 import { invoke } from '@tauri-apps/api/core';
 import type { UsageLogStatsResponse } from '../types';
 import './Stats.less';
@@ -67,10 +68,10 @@ function Stats() {
   return (
     <div className="stats-page">
       <Toolbar title="使用统计">
-        <button className="ant-btn" onClick={loadData} disabled={loading}>
+        <DoodleButton type="primary" onClick={loadData} disabled={loading}>
           {loading ? '加载中...' : '查询'}
-        </button>
-        <button className="ant-btn" onClick={resetFilters}>重置筛选</button>
+        </DoodleButton>
+        <DoodleButton type="ghost" onClick={resetFilters}>重置筛选</DoodleButton>
       </Toolbar>
       <div className="stats-content">
         <div className="stats-filter-bar">
@@ -155,7 +156,8 @@ function Stats() {
                   )}
                   {stats.items.map((item, i) => {
                     const totalCache = item.cache_hit_tokens + item.cache_miss_tokens;
-                    const hitRate = totalCache > 0 ? (item.cache_hit_tokens / totalCache * 100).toFixed(1) : '0.0';
+                    const hitRatePct = totalCache > 0 ? (item.cache_hit_tokens / totalCache * 100) : 0;
+                    const hitRate = hitRatePct.toFixed(1);
                     return (
                       <tr key={i}>
                         <td>{item.dimension_name}</td>
@@ -165,7 +167,7 @@ function Stats() {
                         <td>{formatNum(item.total_tokens)}</td>
                         <td>{formatNum(item.cache_hit_tokens)}</td>
                         <td>{formatNum(item.cache_miss_tokens)}</td>
-                        <td>{hitRate}%</td>
+                        <td className={hitRatePct > 60 ? 'hit-rate-high' : ''}>{hitRate}%</td>
                         <td>{item.avg_duration_ms.toFixed(0)}ms</td>
                         <td>{item.max_duration_ms.toFixed(0)}ms</td>
                       </tr>

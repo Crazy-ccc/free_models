@@ -7,19 +7,25 @@ interface SidebarProps {
   serviceConnected: boolean;
 }
 
-const NAV_ITEMS: Array<{ key: PageKey; label: string }> = [
-  { key: 'overview', label: '概览' },
-  { key: 'providers', label: '供应商' },
-  { key: 'models', label: '模型' },
-  { key: 'apiKeys', label: 'API Keys' },
-  { key: 'stats', label: '统计' },
-  { key: 'settings', label: '设置' },
+const NAV_ITEMS: Array<{ key: PageKey; label: string; icon: string }> = [
+  { key: 'overview', label: '概览', icon: '🎏' },
+  { key: 'providers', label: '供应商', icon: '🧭' },
+  { key: 'models', label: '模型', icon: '🤖' },
+  { key: 'apiKeys', label: 'API Keys', icon: '🗝️' },
+  { key: 'stats', label: '统计', icon: '📈' },
+  { key: 'settings', label: '设置', icon: '🖊️' },
 ];
 
 function Sidebar({ activePage, onNavigate, serviceConnected }: SidebarProps) {
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand">Free Models</div>
+      <div className="sidebar-brand">
+        <div className="sidebar-brand-logo">✏️</div>
+        <div className="sidebar-brand-text">
+          <span className="sidebar-brand-name">Free Models</span>
+          <span className="sidebar-brand-sub">模型中转 · 使用手册</span>
+        </div>
+      </div>
       <nav className="sidebar-nav">
         {NAV_ITEMS.map((item) => (
           <div
@@ -27,9 +33,11 @@ function Sidebar({ activePage, onNavigate, serviceConnected }: SidebarProps) {
             className={`sidebar-nav-item${item.key === activePage ? ' active' : ''}`}
             onClick={() => onNavigate(item.key)}
           >
-            {item.label}
+            <span className="sidebar-nav-icon">{item.icon}</span>
+            <span className="sidebar-nav-label">{item.label}</span>
           </div>
         ))}
+        <div className="sidebar-nav-divider" />
       </nav>
       <div className="sidebar-footer">
         <div className="sidebar-status">

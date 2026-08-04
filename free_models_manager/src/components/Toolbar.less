@@ -3,18 +3,24 @@
 .toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: @spacing-md @spacing-lg;
-  background-color: @bg-container;
-  border-bottom: 1px solid @outline-variant;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
 }
 
+// 草书大标题（下方波浪线由全局 .doodle-squiggle 提供）
 .toolbar-title {
-  font-family: @font-family;
-  font-size: @font-md;
-  font-weight: @font-weight-strong;
-  color: @on-surface;
-  line-height: 1.5;
+  display: inline-block;
+  margin: 0;
+  font-family: @font-hand;
+  font-size: @font-display;
+  font-weight: @font-weight-regular;
+  line-height: 1.2;
+  color: @ink;
+}
+
+.toolbar-spacer {
+  flex: 1;
 }
 
 .toolbar-actions {
@@ -23,29 +29,29 @@
   gap: @spacing-sm;
 }
 
+// 下划线式搜索框
 .toolbar-search {
-  width: 180px;
-  height: @control-height;
-  padding: @padding-input;
+  width: 220px;
+  padding: 6px 4px;
   font-family: @font-family;
-  font-size: @font-base;
-  color: @on-surface;
-  background-color: @bg-container;
-  border: 1px solid @outline;
-  border-radius: @radius-default;
+  font-size: 15px;
+  color: @ink;
+  background-color: transparent;
+  border: none;
+  border-bottom: 3px dotted @outline;
+  border-radius: 0;
   outline: none;
-  transition: border-color @motion-fast @ease-in-out, box-shadow @motion-fast @ease-in-out;
+  transition: border-color @motion-fast @ease-in-out;
 }
 
 .toolbar-search::placeholder {
-  color: @on-surface-tertiary;
+  color: @ink-3;
 }
 
 .toolbar-search:hover {
-  border-color: @primary-hover;
+  border-bottom-color: fade(@ink, 70%);
 }
 
 .toolbar-search:focus {
-  border-color: @primary;
-  box-shadow: 0 0 0 2px @bg-selected;
+  border-bottom-color: @crayon-orange;
 }

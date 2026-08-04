@@ -1,67 +1,69 @@
-// === Ant Design v6 Token System ===
+// === 手绘涂鸦 Design Token System ===
+// 暖纸 / 墨线 / 蜡笔色 —— 变量名保持与旧体系一致（仅改值、不改名），
+// 供组件与页面的 LESS 继续引用。
 
-// --- 颜色：品牌色 ---
-@primary: #1677FF;
-@primary-hover: #4096FF;
-@primary-active: #0958D9;
+// --- 中性/墨色 ---
+@on-surface: #37332B;
+@on-surface-variant: #6B6354;
+@on-surface-tertiary: #9C9281;
+@on-surface-disabled: #B8AE99;
 
-// --- 颜色：语义色 ---
-@success: #52C41A;
-@success-bg: #F6FFED;
-@success-border: #B7EB8F;
-@warning: #FAAD14;
-@warning-bg: #FFFBE6;
-@warning-border: #FFE58F;
-@error: #FF4D4F;
-@error-bg: #FFF2F0;
-@error-border: #FFCCC7;
-@info: #1677FF;
-@info-bg: #E6F4FF;
-@info-border: #91CAFF;
+// --- 背景三层（暖纸） ---
+@bg-layout: #FBF5E7;
+@bg-container: #FFFDF6;
+@bg-elevated: #FFFDF6;
+@bg-hover: #F0E6D2;
+@bg-selected: #FBE3C2;
+@bg-disabled: #EFE7D6;
 
-// --- 颜色：预设色（tag/图表用） ---
-@blue-7: #0958D9;
-@purple: #722ED1;
-@purple-bg: #F9F0FF;
-@cyan: #13C2C2;
-@cyan-bg: #E6FFFB;
-@green-7: #389E0D;
-@magenta: #EB2F96;
-@magenta-bg: #FFF0F6;
-@orange: #FA8C16;
-@orange-bg: #FFF7E6;
-@gold: #FAAD14;
-@volcano: #FA541C;
-@geekblue: #2F54EB;
-@geekblue-bg: #F0F5FF;
-@lime: #A0D911;
+// --- 品牌/主操作（蜡笔橙） ---
+@primary: #EB8A2F;
+@primary-hover: #F09E4E;
+@primary-active: #D97A1F;
 
-// --- 颜色：中性（surface） ---
-@on-surface: #1F1F1F;
-@on-surface-variant: #595959;
-@on-surface-tertiary: #8C8C8C;
-@on-surface-disabled: #BFBFBF;
+// --- 语义色 ---
+@success: #7FB24A;
+@success-bg: rgba(127, 178, 74, 0.14);
+@success-border: #7FB24A;
+@warning: #EB8A2F;
+@warning-bg: rgba(235, 138, 47, 0.14);
+@warning-border: #EB8A2F;
+@error: #E2604F;
+@error-bg: rgba(226, 96, 79, 0.14);
+@error-border: #E2604F;
+@info: #4E7FD6;
+@info-bg: rgba(78, 127, 214, 0.14);
+@info-border: #4E7FD6;
 
-// --- 颜色：背景（surface 三层模型） ---
-@bg-layout: #F5F5F5;
-@bg-container: #FFFFFF;
-@bg-elevated: #FFFFFF;
-@bg-hover: #F5F5F5;
-@bg-selected: #E6F4FF;
-@bg-disabled: #F5F5F5;
+// --- 预设色（tag/图表用） ---
+@blue-7: #4E7FD6;
+@purple: #9563C4;
+@purple-bg: rgba(149, 99, 196, 0.14);
+@cyan: #3FA09A;
+@cyan-bg: rgba(63, 160, 154, 0.14);
+@green-7: #7FB24A;
+@magenta: #E589B0;
+@magenta-bg: rgba(229, 137, 176, 0.14);
+@orange: #EB8A2F;
+@orange-bg: rgba(235, 138, 47, 0.14);
+@gold: #EAB54B;
+@volcano: #E2604F;
+@geekblue: #4E7FD6;
+@geekblue-bg: rgba(78, 127, 214, 0.14);
+@lime: #A0C76A;
 
-// --- 颜色：边框 ---
-@outline: #D9D9D9;
-@outline-variant: #F0F0F0;
+// --- 边框 ---
+@outline: #D8CEB8;
+@outline-variant: #EAE0CA;
 @border-color: @outline;
 @border-light: @outline-variant;
 
-// --- 圆角 ---
-@radius-sm: 2px;
-@radius-md: 4px;
-@radius-default: 6px;
-@radius-lg: 8px;
-@radius-xl: 16px;
+// --- 圆角（涂鸦异形 wobble） ---
+@radius-sm: 12px 4px 14px 4px/4px 14px 4px 12px;
+@radius-md: 14px 6px 16px 6px/6px 16px 6px 14px;
+@radius-default: 16px 8px 18px 8px/8px 18px 8px 16px;
+@radius-lg: 20px 10px 22px 10px/10px 22px 10px 20px;
+@radius-xl: 28px 14px 30px 14px/14px 30px 14px 28px;
 @radius-full: 9999px;
 
 // --- 间距（4px 栅格）---
@@ -84,10 +86,13 @@
 @padding-table-header: 16px;
 
 // --- 字体栈 ---
-@font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
-@font-family-code: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+@font-family: 'Comic Neue', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+@font-family-code: 'Comic Neue', 'SFMono-Regular', Consolas, Menlo, monospace;
+@font-hand: 'Ma Shan Zheng', 'ZCOOL KuaiLe', 'Comic Neue', cursive;
+@font-kuale: 'ZCOOL KuaiLe', 'Ma Shan Zheng', 'Comic Neue', sans-serif;
+@font-en: 'Gochi Hand', 'Comic Neue', sans-serif;
 
-// --- 字号（Ant 仅 14/16 + 标题 20/24/30/38）---
+// --- 字号 ---
 @font-base: 14px;
 @font-sm: 12px;
 @font-md: 16px;
@@ -101,10 +106,32 @@
 @font-weight-medium: 500;
 @font-weight-strong: 600;
 
+// --- 涂鸦专用（异形圆角 / 手绘投影） ---
+@wobble-1: 255px 25px 225px 25px/25px 225px 25px 255px;
+@wobble-2: 225px 15px 255px 15px/15px 255px 15px 225px;
+@shadow-hard: 0 6px 0 -2px rgba(82, 63, 42, 0.16);
+@shadow-soft: 0 10px 26px -12px rgba(82, 63, 42, 0.35);
+
 // --- 阴影 ---
-@shadow-card: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
-@shadow-popup: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
-@shadow-drawer-left: -6px 0 16px 0 rgba(0, 0, 0, 0.08), -3px 0 6px -4px rgba(0, 0, 0, 0.12), -9px 0 28px 8px rgba(0, 0, 0, 0.05);
+@shadow-card: 0 4px 0 -2px rgba(82, 63, 42, 0.14);
+@shadow-popup: @shadow-soft;
+@shadow-drawer-left: -6px 0 16px 0 rgba(82, 63, 42, 0.18), -9px 0 28px 8px rgba(82, 63, 42, 0.12);
+
+// --- 蜡笔色 / 纸 / 墨 别名 ---
+@crayon-orange: #EB8A2F;
+@crayon-red: #E2604F;
+@crayon-teal: #3FA09A;
+@crayon-blue: #4E7FD6;
+@crayon-green: #7FB24A;
+@crayon-purple: #9563C4;
+@crayon-yellow: #EAB54B;
+@crayon-pink: #E589B0;
+@paper: #FBF5E7;
+@paper-2: #F4EADA;
+@paper-card: #FFFDF6;
+@ink: #37332B;
+@ink-2: #6B6354;
+@ink-3: #9C9281;
 
 // --- 动效 ---
 @motion-fast: 0.1s;
@@ -117,5 +144,5 @@
 @badge-size: 6px;
 
 // --- 侧边栏 ---
-@sidebar-width: 240px;
-@sidebar-item-height: 40px;
+@sidebar-width: 236px;
+@sidebar-item-height: 44px;

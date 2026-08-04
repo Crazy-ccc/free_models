@@ -9,8 +9,9 @@ use std::time::Duration;
 use crate::util::cache_affinity::CacheAffinity;
 use crate::util::model_scheduler::{CredentialInfo, ModelProviderMap, ModelScheduleInfo};
 pub(crate) use crate::util::penalty::CircuitBreaker;
-pub(crate) use crate::util::proxy_ssrf::validate_url_safe;
+pub(crate) use crate::util::proxy_ssrf::{SsrfChecker, validate_url_safe};
 pub(crate) use crate::util::proxy_types::{ApiKeyContext, ForwardMeta, LogContext, Protocol, UsageInfo, log_status};
+use crate::util::stream_usage_scanner::StreamUsageScanner;
 use crate::util::usage_log_collector::spawn_usage_log;
 
 pub(crate) fn join_url(base_url: &str, path: &str) -> String {
@@ -37,42 +38,9 @@ fn log_stream_usage(
     spawn_usage_log(model_info, map, cred, api_key_ctx, &log_ctx);
 }
 
-fn extract_usage_from_buffer(buffer: &[u8], protocol: Protocol) -> Option<UsageInfo> {
-    let s = std::str::from_utf8(buffer).ok()?;
-    let find_usage_in_json = |json: &Value| -> Option<UsageInfo> {
-        if let Some(usage) = json.get("usage") {
-            if !usage.is_null() {
-                return Some(protocol.extract_usage(usage));
-            }
-        }
-        if protocol == Protocol::Responses {
-            if let Some(response) = json.get("response") {
-                if let Some(usage) = response.get("usage") {
-                    if !usage.is_null() {
-                        return Some(protocol.extract_usage(usage));
-                    }
-                }
-            }
-        }
-        None
-    };
-    for event in s.split("\n\n") {
-        for line in event.lines() {
-            if let Some(data) = line.strip_prefix("data: ")
-                && let Ok(json) = serde_json::from_str::<Value>(data)
-            {
-                if let Some(info) = find_usage_in_json(&json) {
-                    return Some(info);
-                }
-            }
-        }
-    }
-    None
-}
-
 enum ForwardOutcome {
     Success(reqwest::Response),
-    Retry,
+    Retry(Option<u64>),
     Fail(String),
 }
 
@@ -137,10 +105,11 @@ async fn forward_to_provider(
     body: &Value,
     is_stream: bool,
     protocol: Protocol,
+    ssrf_checker: &SsrfChecker,
 ) -> ForwardOutcome {
     let url = join_url(&map.base_url, protocol.path());
 
-    if let Err(e) = validate_url_safe(&url).await {
+    if let Err(e) = ssrf_checker.validate_url_safe(&url).await {
         warn!("SSRF check failed for {}: {}", url, e);
         return ForwardOutcome::Fail(format!("URL validation failed for {}", map.provider_name));
     }
@@ -157,7 +126,6 @@ async fn forward_to_provider(
     let mut request = client
         .post(&url)
         .header("Content-Type", "application/json")
-        .header("Accept-Encoding", "identity")
         .json(&request_body)
         .timeout(Duration::from_secs(map.timeout));
 
@@ -177,13 +145,14 @@ async fn forward_to_provider(
                     return ForwardOutcome::Success(resp);
                 }
                 let status = resp.status();
+                let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|s| s.trim().parse::<u64>().ok());
                 let error_text = resp.text().await.unwrap_or_default();
                 warn!(
                     "Provider {} returned error status: {}, error: {}",
                     map.provider_name, status, error_text
                 );
                 if [429, 500, 502, 503, 504].contains(&status.as_u16()) {
-                    ForwardOutcome::Retry
+                    ForwardOutcome::Retry(retry_after)
                 } else {
                     ForwardOutcome::Fail(error_text)
                 }
@@ -200,7 +169,7 @@ async fn forward_to_provider(
                     map.provider_name, e
                 );
             }
-            ForwardOutcome::Retry
+            ForwardOutcome::Retry(None)
 
         }
     }
@@ -223,20 +192,17 @@ async fn handle_stream_response(
     let cred = cred.clone();
     let api_key_ctx = api_key_ctx.clone();
 
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<web::Bytes, actix_web::Error>>();
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<web::Bytes, actix_web::Error>>(64);
 
     actix_web::rt::spawn(async move {
         let mut upstream_stream = resp.bytes_stream();
-        let mut buffer = Vec::new();
-        let mut logged_usage = false;
+        let mut scanner = StreamUsageScanner::new(protocol);
 
         while let Some(item) = upstream_stream.next().await {
             match item {
                 Ok(bytes) => {
-                    buffer.extend_from_slice(&bytes);
-
-                    if !logged_usage {
-                        if let Some(info) = extract_usage_from_buffer(&buffer, protocol) {
+                    if !scanner.done {
+                        if let Some(info) = scanner.push(&bytes) {
                             debug!(
                                 "Model {} via provider {} stream usage: prompt_tokens={}, completion_tokens={}, total_tokens={}",
                                 model_info.model_name, map.provider_name,
@@ -249,23 +215,24 @@ async fn handle_stream_response(
                                 start_time,
                                 info,
                             );
-                            logged_usage = true;
                         }
                     }
 
-                    if tx.send(Ok(bytes)).is_err() {
+                    if tx.send(Ok(bytes)).await.is_err() {
                         break;
                     }
                 }
                 Err(_) => {
-                    let _ = tx.send(Ok(close_event.clone()));
+                    if tx.send(Ok(close_event.clone())).await.is_err() {
+                        break;
+                    }
                     break;
                 }
             }
         }
 
-        if !logged_usage {
-            if let Some(info) = extract_usage_from_buffer(&buffer, protocol) {
+        if !scanner.done {
+            if let Some(info) = scanner.finish() {
                 log_stream_usage(
                     &model_info, &map, &cred,
                     &api_key_ctx,
@@ -401,6 +368,7 @@ pub(crate) async fn proxy_chat_completion_inner(
     cache_affinity: &CacheAffinity,
     api_key_ctx: ApiKeyContext,
     forward_meta: ForwardMeta,
+    ssrf_checker: &SsrfChecker,
 ) -> Result<HttpResponse, HttpResponse> {
     let ordered_models = reorder_by_affinity(models, api_key_ctx.id, cache_affinity);
     let mut last_log_info: Option<(&ModelScheduleInfo, &ModelProviderMap, &CredentialInfo)> = None;
@@ -426,18 +394,22 @@ pub(crate) async fn proxy_chat_completion_inner(
                     model.model_name, map.provider_name, cred.provider_credential_id, model.priority, forward_meta.protocol.as_str()
                 );
 
-                match forward_to_provider(client, map, cred, body, forward_meta.is_stream, forward_meta.protocol).await {
+                match forward_to_provider(client, map, cred, body, forward_meta.is_stream, forward_meta.protocol, ssrf_checker).await {
                     ForwardOutcome::Success(resp) => {
                         return handle_success(resp, model, map, cred, circuit_breaker, cache_affinity, &api_key_ctx, forward_meta).await;
                     }
-                    ForwardOutcome::Retry => {
-                        warn!("Model {} via provider {} credential {} returned retryable error, retrying after 500ms...", model.model_name, map.provider_name, cred.provider_credential_id);
-                        tokio::time::sleep(Duration::from_millis(500)).await;
-                        match forward_to_provider(client, map, cred, body, forward_meta.is_stream, forward_meta.protocol).await {
+                    ForwardOutcome::Retry(retry_after) => {
+                        let wait = match retry_after {
+                            Some(secs) => Duration::from_secs(secs.min(15)),
+                            None => Duration::from_millis(500 + rand::random_range(0..=400)),
+                        };
+                        warn!("Model {} via provider {} credential {} returned retryable error, retrying after {:?}...", model.model_name, map.provider_name, cred.provider_credential_id, wait);
+                        tokio::time::sleep(wait).await;
+                        match forward_to_provider(client, map, cred, body, forward_meta.is_stream, forward_meta.protocol, ssrf_checker).await {
                             ForwardOutcome::Success(resp) => {
                                 return handle_success(resp, model, map, cred, circuit_breaker, cache_affinity, &api_key_ctx, forward_meta).await;
                             }
-                            ForwardOutcome::Retry | ForwardOutcome::Fail(_) => {
+                            ForwardOutcome::Retry(_) | ForwardOutcome::Fail(_) => {
                                 circuit_breaker.record_failure(&model.model_name, &map.provider_name, cred.provider_credential_id);
                                 warn!("Model {} via provider {} credential {} failed after retry, circuit breaker updated", model.model_name, map.provider_name, cred.provider_credential_id);
                                 error_details.push(format!("{} via {} credential {}: failed after retry", model.model_name, map.provider_name, cred.provider_credential_id));

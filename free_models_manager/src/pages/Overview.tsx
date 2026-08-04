@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { DoodleButton } from '../components/doodle';
 import Toolbar from '../components/Toolbar';
 import { invoke } from '@tauri-apps/api/core';
 import type { ServiceStatus, UsageLogStatItem } from '../types';
@@ -56,7 +57,7 @@ function Overview({ onStatusChange }: OverviewProps) {
     return (
       <div className="overview-page">
         <Toolbar title="概览">
-          <button className="ant-btn" onClick={handleRefresh}>刷新缓存</button>
+          <DoodleButton onClick={handleRefresh}>刷新缓存</DoodleButton>
         </Toolbar>
         <div className="overview-loading">加载中...</div>
       </div>
@@ -66,7 +67,7 @@ function Overview({ onStatusChange }: OverviewProps) {
   return (
     <div className="overview-page">
       <Toolbar title="概览">
-        <button className="ant-btn" onClick={handleRefresh}>刷新缓存</button>
+        <DoodleButton onClick={handleRefresh}>刷新缓存</DoodleButton>
       </Toolbar>
       <div className="overview-content">
         <div className="stats-row">
@@ -114,7 +115,7 @@ function Overview({ onStatusChange }: OverviewProps) {
 
         {!loading && (
           <div className="yesterday-stats">
-            <div className="yesterday-section">
+            <div className="yesterday-section doodle-paper-card">
               <div className="yesterday-title">昨日 Token 消耗</div>
               <table className="yesterday-table">
                 <thead>
@@ -147,7 +148,7 @@ function Overview({ onStatusChange }: OverviewProps) {
           </div>
         )}
 
-        <div className="penalties">
+        <div className="penalties doodle-paper-card">
           <div className="penalties-title">惩罚中的模型</div>
           {status?.penalties && status.penalties.length > 0 ? (
             <div className="penalties-list">

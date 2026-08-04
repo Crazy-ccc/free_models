@@ -8,6 +8,7 @@ use crate::util::api_key_cache::ApiKeyCache;
 use crate::util::cache_affinity::CacheAffinity;
 use crate::util::model_scheduler::SchedulerCache;
 use crate::util::penalty::CircuitBreaker;
+use crate::util::proxy_ssrf::SsrfChecker;
 
 pub struct AppState {
     pub database: Database,
@@ -16,6 +17,7 @@ pub struct AppState {
     pub priority_penalty: web::Data<CircuitBreaker>,
     pub api_key_cache: ApiKeyCache,
     pub cache_affinity: CacheAffinity,
+    pub ssrf_checker: SsrfChecker,
     pub encryption_key: [u8; 32],
 }
 

@@ -1,30 +1,29 @@
 @import '../styles/variables.less';
 
+// 手绘胶囊开关 52x26
 .toggle {
   position: relative;
-  width: 44px;
-  height: 22px;
-  border-radius: 11px;
-  background-color: @on-surface-disabled;
+  width: 52px;
+  height: 26px;
+  border-radius: @radius-full;
+  border: 2.5px solid @ink;
+  background-color: @paper-2;
+  box-shadow: inset 0 2px 3px fade(@ink, 12%);
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.2s @ease-in-out;
+  transition: background-color 0.18s @ease-in-out, transform 0.18s @ease-in-out;
   user-select: none;
 
   &:hover {
-    background-color: @on-surface-tertiary;
+    transform: rotate(-3deg);
   }
 }
 
 .toggle.on {
-  background-color: @primary;
+  background-color: @crayon-green;
 
   &:hover {
-    background-color: @primary-hover;
-  }
-
-  &:active {
-    background-color: @primary-active;
+    transform: rotate(3deg);
   }
 }
 
@@ -34,36 +33,15 @@
   left: 2px;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
-  background-color: @bg-container;
-  transition: all 0.2s @ease-in-out;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-radius: @radius-full;
+  background-color: @paper-card;
+  border: 2px solid @ink;
+  box-shadow: @shadow-hard;
+  transition: transform 0.18s @ease-in-out;
 }
 
 .toggle.on .toggle-handle {
-  left: 24px;
-}
-
-.toggle-inner {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  line-height: 1;
-  transition: all 0.2s @ease-in-out;
-  color: rgba(0, 0, 0, 0.35);
-  padding-left: 18px;
-}
-
-.toggle.on .toggle-inner {
-  color: rgba(255, 255, 255, 0.85);
-  padding-left: 0;
-  padding-right: 18px;
+  transform: translateX(26px);
 }
 
 .toggle-wrap {

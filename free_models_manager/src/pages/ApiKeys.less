@@ -13,29 +13,50 @@
   padding: 0 0 24px;
 }
 
+// 表格 = 纸片容器（墨框 + wobble 圆角 + 手绘投影）
 .api-keys-table {
   width: 100%;
   min-width: 600px;
   border-collapse: collapse;
-  border-spacing: 0;
-  background: @bg-container;
+  background: @paper-card;
+  border: 3px solid @ink;
+  border-radius: @wobble-1;
+  box-shadow: @shadow-card;
 
-  th {
-    padding: @padding-table-header;
-    background-color: @bg-container;
-    color: @on-surface;
-    font-weight: @font-weight-strong;
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 12px 16px 14px;
+    font-family: @font-kuale;
+    font-weight: @font-weight-regular;
     font-size: @font-base;
+    color: @ink;
+    background: @paper-card;
     text-align: center;
-    border-bottom: 1px solid @outline-variant;
     white-space: nowrap;
+    position: relative;
+    border-bottom: none;
+
+    // 蜡笔波浪下划线
+    &::after {
+      content: '';
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 6px;
+      height: 4px;
+      background-repeat: repeat-x;
+      background-size: 8px 4px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='4' viewBox='0 0 8 4'><path d='M0 2 Q2 0 4 2 T8 2' fill='none' stroke='%237FB24A' stroke-width='1.4'/></svg>");
+    }
   }
 
-  td {
-    padding: @padding-table-cell;
-    border-bottom: 1px solid @outline-variant;
-    color: @on-surface;
+  tbody td {
+    padding: 10px 16px;
     font-size: @font-base;
+    color: @ink;
+    border-bottom: 2px dotted @outline;
     white-space: nowrap;
     text-align: center;
     vertical-align: middle;
@@ -46,7 +67,7 @@
   }
 
   tbody tr:hover td {
-    background-color: @bg-hover;
+    background: @bg-hover;
   }
 
   tbody tr:last-child td {
@@ -60,28 +81,64 @@
 
 .clickable-name {
   cursor: pointer;
-  color: @primary;
+  font-family: @font-kuale;
+  font-size: @font-md;
+  color: @crayon-blue;
+
   &:hover {
     color: @primary-hover;
+    text-decoration: underline wavy @primary;
+    text-underline-offset: 4px;
   }
 }
 
-.api-keys-key {
+// Key 掩码：DoodleTag 纸尘风格
+.api-keys-mask {
   font-family: @font-family-code;
   font-size: @font-sm;
-  color: @on-surface-variant;
+  color: @ink;
+}
+
+// 复制小按钮：hover 变蜡笔蓝
+.api-keys-copy {
+  margin-left: 8px;
+  font-size: @font-sm;
+  color: @ink-2;
+  cursor: pointer;
+  transition: color @motion-fast @ease-in-out, transform @motion-fast @ease-in-out;
+
+  &:hover {
+    color: @crayon-blue;
+    transform: scale(1.12) rotate(-4deg);
+  }
 }
 
 .api-keys-time {
   font-size: @font-sm;
-  color: @on-surface-variant;
+  color: @ink-2;
   font-family: @font-family-code;
 }
 
 .api-keys-empty {
   text-align: center;
-  color: @on-surface-disabled;
-  padding: 32px 16px;
+  color: @ink-3;
+  padding: 32px 16px !important;
+  font-family: @font-hand;
+  font-size: @font-lg;
+}
+
+// 创建成功弹窗里的 Key 展示框（纸尘底 + 虚线墨框）
+.api-key-result {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: @paper-2;
+  border: 2px dashed fade(@ink, 40%);
+  border-radius: @wobble-2;
+  font-family: @font-family-code;
+  font-size: @font-md;
+  color: @ink;
+  word-break: break-all;
+  user-select: all;
 }
 
 .api-keys-form {
@@ -96,13 +153,10 @@
   margin-bottom: 6px;
 
   label {
+    font-family: @font-kuale;
     font-size: @font-base;
-    color: @on-surface;
+    color: @ink-2;
     margin-bottom: 6px;
-  }
-
-  input {
-    height: @control-height;
   }
 }
 
@@ -111,15 +165,12 @@
   display: flex;
   align-items: center;
 
-  input {
-    flex: 1;
-    padding-right: 60px;
-    height: @control-height;
+  .doodle-input {
+    padding-right: 64px;
   }
 }
 
 .key-toggle-btn {
   position: absolute;
-  right: 8px;
+  right: 4px;
 }
-

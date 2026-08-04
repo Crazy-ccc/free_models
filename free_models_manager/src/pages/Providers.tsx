@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { message, Modal, Checkbox, Input, Empty, Tag, Button, Select } from 'antd';
+import {
+  DoodleButton,
+  DoodleCheckbox,
+  DoodleEmpty,
+  DoodleInput,
+  DoodleMessage,
+  DoodleModal,
+  DoodleSelect,
+  DoodleTag,
+} from '../components/doodle';
 import Toolbar from '../components/Toolbar';
 import Toggle from '../components/Toggle';
 import Drawer from '../components/Drawer';
 import { invoke } from '@tauri-apps/api/core';
-import type { Provider, ProviderCredential, TestCredentialResult } from '../types';
+import type { Provider, ProviderCredential, ProviderModelMap, TestCredentialResult } from '../types';
 import './Providers.less';
 
 function maskApiKey(key: string): string {
@@ -44,6 +53,26 @@ function CredentialsPage({
   const [testCred, setTestCred] = useState<ProviderCredential | null>(null);
   const [testModelId, setTestModelId] = useState('');
   const [testLoading, setTestLoading] = useState(false);
+  const [providerModelMaps, setProviderModelMaps] = useState<ProviderModelMap[]>([]);
+
+  const mappedModels = useMemo(
+    () => {
+      const mapModelIds = new Set(providerModelMaps.map((m) => m.model_id));
+      return models.filter((m: any) => mapModelIds.has(m.id));
+    },
+    [models, providerModelMaps],
+  );
+
+  const modelMapLookup = useMemo(
+    () => {
+      const lookup: Record<number, string> = {};
+      providerModelMaps.forEach((m) => {
+        lookup[m.model_id] = m.provider_model_id;
+      });
+      return lookup;
+    },
+    [providerModelMaps],
+  );
 
   const load = () => {
     invoke<ProviderCredential[]>('fetch_provider_credentials', { serverUrl, providerId })
@@ -51,8 +80,15 @@ function CredentialsPage({
       .catch(() => setCredentials([]));
   };
 
+  const loadMaps = () => {
+    invoke<ProviderModelMap[]>('fetch_provider_model_maps', { serverUrl, modelId: null, providerId })
+      .then(setProviderModelMaps)
+      .catch(() => setProviderModelMaps([]));
+  };
+
   useEffect(() => {
     load();
+    loadMaps();
   }, [providerId]);
 
   const openCreate = () => {
@@ -103,15 +139,20 @@ function CredentialsPage({
   };
 
   const handleDelete = (cred: ProviderCredential) => {
-    Modal.confirm({
+    DoodleModal.confirm({
       title: '确定删除？',
       content: `将删除凭证「${cred.name || cred.id}」`,
       okText: '确定',
       cancelText: '取消',
-      okButtonProps: { danger: true },
+      danger: true,
       onOk: async () => {
-        await invoke('delete_provider_credential', { serverUrl, id: cred.id });
-        load();
+        try {
+          await invoke('delete_provider_credential', { serverUrl, id: cred.id });
+          load();
+        } catch (e) {
+          console.error(e);
+          DoodleMessage.error('删除失败');
+        }
       },
     });
   };
@@ -123,7 +164,15 @@ function CredentialsPage({
       await invoke('update_provider_credential', {
         serverUrl,
         id: cred.id,
-        data: { provider_id: cred.provider_id, is_active: newActive, account: cred.account || null, password: cred.password || null },
+        data: {
+          provider_id: cred.provider_id,
+          name: cred.name || undefined,
+          api_key: cred.api_key,
+          account: cred.account || null,
+          password: cred.password || null,
+          priority: cred.priority,
+          is_active: newActive,
+        },
       });
     } catch (e) {
       setCredentials(prev => prev.map(c => c.id === cred.id ? { ...c, is_active: !newActive } : c));
@@ -140,12 +189,12 @@ function CredentialsPage({
         prompt: '你好',
       });
       if (result.success) {
-        Modal.info({ title: '测试成功', content: `模型 ${result.model_id} 响应时间 ${result.response_time_ms}ms` });
+        DoodleModal.info({ title: '测试成功', content: `模型 ${result.model_id} 响应时间 ${result.response_time_ms}ms` });
       } else {
-        Modal.error({ title: '测试失败', content: result.error || '未知错误' });
+        DoodleModal.error({ title: '测试失败', content: result.error || '未知错误' });
       }
     } catch (e: any) {
-      Modal.error({ title: '测试失败', content: String(e) });
+      DoodleModal.error({ title: '测试失败', content: String(e) });
     } finally {
       setTestLoading(false);
       setTestOpen(false);
@@ -155,16 +204,18 @@ function CredentialsPage({
 
   const openTest = (cred: ProviderCredential) => {
     if (testLoading) return;
-    if (models.length === 0) {
-      Modal.error({ title: '无可用模型', content: '没有模型，无法测试' });
+    if (mappedModels.length === 0) {
+      DoodleModal.error({ title: '无可用模型', content: '该供应商没有已映射的模型，无法测试' });
       return;
     }
-    if (models.length === 1) {
-      runTest(cred, models[0].id);
+    if (mappedModels.length === 1) {
+      const modelId = modelMapLookup[mappedModels[0].id];
+      if (modelId) runTest(cred, modelId);
       return;
     }
     setTestCred(cred);
-    setTestModelId(models[0].id);
+    const firstId = modelMapLookup[mappedModels[0].id] || '';
+    setTestModelId(firstId);
     setTestOpen(true);
   };
 
@@ -177,11 +228,12 @@ function CredentialsPage({
     <div className="providers-page">
       <div className="toolbar">
         <div className="toolbar-title">
-          <button className="back-arrow" onClick={onBack}>←</button>
+          <DoodleButton size="small" type="ghost" className="back-arrow" onClick={onBack}>←</DoodleButton>
           凭证管理 - {providerName}
         </div>
+        <div className="toolbar-spacer" />
         <div className="toolbar-actions">
-          <button className="ant-btn ant-btn-primary" onClick={openCreate}>+ 新增凭证</button>
+          <DoodleButton type="primary" onClick={openCreate}>+ 新增凭证</DoodleButton>
         </div>
       </div>
       <div className="providers-table-wrap">
@@ -214,9 +266,9 @@ function CredentialsPage({
                     </div>
                   </td>
                   <td>
-                    <button className="ant-btn ant-btn-sm" style={{ marginRight: 8 }} disabled={testLoading} onClick={() => openTest(c)}>测试</button>
-                    <button className="ant-btn ant-btn-sm" style={{ marginRight: 8 }} onClick={() => openEdit(c)}>编辑</button>
-                    <button className="ant-btn ant-btn-sm ant-btn-dangerous" onClick={() => handleDelete(c)}>删除</button>
+                    <DoodleButton size="small" style={{ marginRight: 8 }} disabled={testLoading} onClick={() => openTest(c)}>测试</DoodleButton>
+                    <DoodleButton size="small" style={{ marginRight: 8 }} onClick={() => openEdit(c)}>编辑</DoodleButton>
+                    <DoodleButton size="small" type="danger" onClick={() => handleDelete(c)}>删除</DoodleButton>
                   </td>
                 </tr>
               ))
@@ -233,24 +285,24 @@ function CredentialsPage({
       >
         <div className="form-field">
           <label>名称（可选）</label>
-          <input className="ant-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="给这组凭证起个名字" />
+          <DoodleInput value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="给这组凭证起个名字" />
         </div>
         <div className="form-field">
           <label>API Key</label>
-          <input className="ant-input" value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} />
+          <DoodleInput value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} />
         </div>
         <div className="form-field">
           <label>账号（可选）</label>
-          <input className="ant-input" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })} />
+          <DoodleInput value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })} />
         </div>
         <div className="form-field">
           <label>密码（可选）</label>
-          <input className="ant-input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <DoodleInput type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         </div>
         <div className="form-row">
           <div className="form-field">
             <label>优先级</label>
-            <input type="number" className="ant-input" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} />
+            <DoodleInput type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} />
           </div>
           <div className="form-field">
             <label>状态</label>
@@ -267,17 +319,17 @@ function CredentialsPage({
               <span className="modal-close" onClick={() => !testLoading && setTestOpen(false)}>&times;</span>
             </div>
             <div className="modal-list">
-              {models.map((m: any) => (
+              {mappedModels.map((m: any) => (
                 <label
                   key={m.id}
-                  className={`test-model-row${testModelId === m.id ? ' selected' : ''}`}
+                  className={`test-model-row${testModelId === modelMapLookup[m.id] ? ' selected' : ''}`}
                 >
                   <input
                     type="radio"
                     name="test-model"
-                    value={m.id}
-                    checked={testModelId === m.id}
-                    onChange={() => setTestModelId(m.id)}
+                    value={modelMapLookup[m.id] || ''}
+                    checked={testModelId === modelMapLookup[m.id]}
+                    onChange={() => setTestModelId(modelMapLookup[m.id] || '')}
                     disabled={testLoading}
                   />
                   <span className="test-model-name">{m.name}</span>
@@ -286,10 +338,10 @@ function CredentialsPage({
               ))}
             </div>
             <div className="modal-footer">
-              <button className="ant-btn" onClick={() => setTestOpen(false)} disabled={testLoading}>取消</button>
-              <button className="ant-btn ant-btn-primary" onClick={confirmTest} disabled={testLoading}>
+              <DoodleButton onClick={() => setTestOpen(false)} disabled={testLoading}>取消</DoodleButton>
+              <DoodleButton type="primary" onClick={confirmTest} disabled={testLoading}>
                 {testLoading ? '测试中...' : '确认测试'}
-              </button>
+              </DoodleButton>
             </div>
           </div>
         </div>
@@ -389,12 +441,12 @@ function Providers() {
   };
 
   const handleDeleteRow = (provider: Provider) => {
-    Modal.confirm({
+    DoodleModal.confirm({
       title: '确定删除？',
       content: `将删除供应商「${provider.name}」`,
       okText: '确定',
       cancelText: '取消',
-      okButtonProps: { danger: true },
+      danger: true,
       onOk: () => {
         invoke('delete_provider', { serverUrl, id: provider.id }).then(() => {
           load();
@@ -425,7 +477,7 @@ function Providers() {
         setImportOpen(true);
       })
       .catch(() => {
-        message.error('该供应商不支持一键导入模型');
+        DoodleMessage.error('该供应商不支持一键导入模型');
       });
   };
 
@@ -452,20 +504,20 @@ function Providers() {
         context_length: details.context_length,
       }));
       await invoke('import_provider_models', { serverUrl, providerId: importProvider.id, data: models });
-      message.success(`成功导入 ${models.length} 个模型`);
+      DoodleMessage.success(`成功导入 ${models.length} 个模型`);
       setImportOpen(false);
       load();
     } catch (e) {
-      message.error('导入失败');
+      DoodleMessage.error('导入失败');
     } finally {
       setImporting(false);
     }
   };
 
-  const handleSelectAllChange = (e: { target: { checked: boolean } }) => {
+  const handleSelectAllChange = (checked: boolean) => {
     setImportModelDetails((prev) => {
       const next = { ...prev };
-      if (e.target.checked) {
+      if (checked) {
         selectableModels.forEach((m) => {
           if (!(m.id in next)) next[m.id] = { provider_model_id: m.id, model_id: '', protocols: 'openai' };
         });
@@ -485,7 +537,7 @@ function Providers() {
 
   const confirmCreateModel = async () => {
     if (!createModelName.trim()) {
-      message.warning('请输入模型名称');
+      DoodleMessage.warning('请输入模型名称');
       return;
     }
     setCreateModelLoading(true);
@@ -494,9 +546,9 @@ function Providers() {
       setCreateModelOpen(false);
       // New global model appears in Select options (models state), not in proxyModels.
       setModels((prev) => (prev.some((m) => m.name === created.name) ? prev : [...prev, created]));
-      message.success('模型创建成功，请在下方列表中选择它作为映射目标');
+      DoodleMessage.success('模型创建成功，请在下方列表中选择它作为映射目标');
     } catch (e) {
-      message.error('创建失败');
+      DoodleMessage.error('创建失败');
     } finally {
       setCreateModelLoading(false);
     }
@@ -517,7 +569,7 @@ function Providers() {
   return (
     <div className="providers-page">
       <Toolbar title="供应商" showSearch={true} searchValue={searchQuery} onSearchChange={setSearchQuery}>
-        <button className="ant-btn ant-btn-primary" onClick={openCreate}>+ 新增</button>
+        <DoodleButton type="primary" onClick={openCreate}>+ 新增</DoodleButton>
       </Toolbar>
       <div className="providers-table-wrap">
         <table className="providers-table">
@@ -539,10 +591,10 @@ function Providers() {
                   <td className="clickable-name" onClick={() => openEdit(p)}>{p.name}</td>
                   <td>{p.base_url}</td>
                   <td>
-                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openEdit(p); }}>编辑</button>
-                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openCredentialsPage(p); }}>凭证</button>
-                    <button className="ant-btn" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openImport(p); }}>一键添加模型</button>
-                    <button className="ant-btn ant-btn-dangerous" onClick={(e) => { e.stopPropagation(); handleDeleteRow(p); }}>删除</button>
+                    <DoodleButton size="small" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openEdit(p); }}>编辑</DoodleButton>
+                    <DoodleButton size="small" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openCredentialsPage(p); }}>凭证</DoodleButton>
+                    <DoodleButton size="small" style={{ marginRight: 8 }} onClick={(e) => { e.stopPropagation(); openImport(p); }}>一键添加模型</DoodleButton>
+                    <DoodleButton size="small" type="danger" onClick={(e) => { e.stopPropagation(); handleDeleteRow(p); }}>删除</DoodleButton>
                   </td>
                 </tr>
               ))
@@ -559,15 +611,15 @@ function Providers() {
       >
         <div className="form-field">
           <label>名称</label>
-          <input className="ant-input" value={name} onChange={(e) => setName(e.target.value)} />
+          <DoodleInput value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="form-field">
           <label>Base URL</label>
-          <input className="ant-input" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+          <DoodleInput value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
         </div>
       </Drawer>
 
-      <Modal
+      <DoodleModal
         open={importOpen}
         onCancel={() => setImportOpen(false)}
         title={`导入模型 — ${importProvider?.name}`}
@@ -575,14 +627,14 @@ function Providers() {
         footer={null}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-          <Button size="small" onClick={openCreateModel}>新建模型</Button>
-          <Checkbox
+          <DoodleButton size="small" onClick={openCreateModel}>新建模型</DoodleButton>
+          <DoodleCheckbox
             checked={allChecked}
             indeterminate={indeterminate}
             onChange={handleSelectAllChange}
-          >全选</Checkbox>
+          >全选</DoodleCheckbox>
         </div>
-        <Input
+        <DoodleInput
           allowClear
           placeholder="搜索模型..."
           value={importSearch}
@@ -591,7 +643,7 @@ function Providers() {
         />
         <div style={{ maxHeight: 360, overflowY: 'auto' }}>
           {filteredProxyModels.length === 0 ? (
-            <Empty description="暂无匹配模型" />
+            <DoodleEmpty description="暂无匹配模型" />
           ) : (
             filteredProxyModels.map((m) => {
               const imported = importedModelIds.has(m.id);
@@ -599,18 +651,18 @@ function Providers() {
               const details = importModelDetails[m.id];
               return (
                 <div key={m.id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-                  <Checkbox
+                  <DoodleCheckbox
                     checked={selected}
                     disabled={imported}
                     onChange={() => !imported && toggleSelect(m.id)}
                   >
                     <span>{m.id}</span>
-                    {imported && <Tag style={{ marginLeft: 8 }}>已导入</Tag>}
-                  </Checkbox>
+                    {imported && <DoodleTag color="default" style={{ marginLeft: 8 }}>已导入</DoodleTag>}
+                  </DoodleCheckbox>
                   {selected && !imported && (
                     <div style={{ margin: '8px 0 4px 24px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <div><label>映射到全局模型（必选）</label></div>
-                      <Select
+                      <DoodleSelect
                         size="small"
                         showSearch
                         placeholder="请选择全局模型"
@@ -620,9 +672,9 @@ function Providers() {
                         style={{ width: '100%' }}
                       />
                       <div><label>Protocols</label></div>
-                      <Input size="small" value={details.protocols} onChange={(e) => setImportModelDetails((prev) => ({ ...prev, [m.id]: { ...prev[m.id], protocols: e.target.value } }))} />
+                      <DoodleInput size="small" value={details.protocols} onChange={(e) => setImportModelDetails((prev) => ({ ...prev, [m.id]: { ...prev[m.id], protocols: e.target.value } }))} />
                       <div><label>Context Length（可选）</label></div>
-                      <Input type="number" size="small" value={details.context_length ?? ''} onChange={(e) => setImportModelDetails((prev) => ({ ...prev, [m.id]: { ...prev[m.id], context_length: e.target.value ? parseInt(e.target.value) : undefined } }))} placeholder="默认 256000" />
+                      <DoodleInput type="number" size="small" value={details.context_length ?? ''} onChange={(e) => setImportModelDetails((prev) => ({ ...prev, [m.id]: { ...prev[m.id], context_length: e.target.value ? parseInt(e.target.value) : undefined } }))} placeholder="默认 256000" />
                     </div>
                   )}
                 </div>
@@ -632,14 +684,14 @@ function Providers() {
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}>
           <span>已选 {selectedCount} 项</span>
-          <Button type="primary" onClick={confirmImport} disabled={importing || selectedCount === 0 || hasEmptyModelId}>
+          <DoodleButton type="primary" onClick={confirmImport} disabled={importing || selectedCount === 0 || hasEmptyModelId}>
             {importing ? '导入中...' : '确认导入'}
-          </Button>
+          </DoodleButton>
         </div>
-      </Modal>
+      </DoodleModal>
 
       {createModelOpen && (
-        <Modal
+        <DoodleModal
           open={createModelOpen}
           title="新建模型"
           onCancel={() => setCreateModelOpen(false)}
@@ -650,13 +702,13 @@ function Providers() {
         >
           <div style={{ marginBottom: 12 }}>
             <div><label>模型名称</label></div>
-            <Input value={createModelName} onChange={(e) => setCreateModelName(e.target.value)} placeholder="如 gpt-4o" />
+            <DoodleInput value={createModelName} onChange={(e) => setCreateModelName(e.target.value)} placeholder="如 gpt-4o" />
           </div>
           <div>
             <div><label>上下文长度</label></div>
-            <Input type="number" value={createModelContextLength} onChange={(e) => setCreateModelContextLength(e.target.value ? parseInt(e.target.value) : 0)} />
+            <DoodleInput type="number" value={createModelContextLength} onChange={(e) => setCreateModelContextLength(e.target.value ? parseInt(e.target.value) : 0)} />
           </div>
-        </Modal>
+        </DoodleModal>
       )}
     </div>
   );

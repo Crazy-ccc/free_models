@@ -12,7 +12,6 @@ function Toggle({ checked, onChange }: ToggleProps) {
       onClick={(e) => { e.stopPropagation(); onChange(!checked); }}
     >
       <div className="toggle-handle" />
-      <span className="toggle-inner">{checked ? '开' : '关'}</span>
     </div>
   );
 }

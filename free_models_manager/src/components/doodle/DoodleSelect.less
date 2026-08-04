@@ -1,0 +1,177 @@
+@import '../../styles/variables.less';
+
+.doodle-select {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
+.doodle-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 2.5px solid @ink;
+  border-radius: @wobble-2;
+  background-color: @paper-card;
+  box-shadow: @shadow-hard;
+  cursor: pointer;
+  transition: transform @motion-fast @ease-in-out, box-shadow @motion-fast @ease-in-out;
+  user-select: none;
+
+  &:hover {
+    transform: translateY(-1px) rotate(-0.5deg);
+    box-shadow: 0 7px 0 -2px rgba(82, 63, 42, 0.2);
+  }
+
+  &:active {
+    transform: translateY(1px);
+    box-shadow: none;
+  }
+}
+
+.doodle-select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: @font-family;
+  font-size: @font-base;
+  color: @ink;
+}
+
+.doodle-select-placeholder {
+  color: @ink-3;
+}
+
+.doodle-select-arrow {
+  font-size: 10px;
+  color: @ink-3;
+  flex-shrink: 0;
+  transition: transform @motion-fast @ease-in-out;
+}
+
+.doodle-select-open .doodle-select-arrow {
+  transform: rotate(180deg);
+}
+
+.doodle-select-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 12px;
+  color: @ink-3;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: color @motion-fast @ease-in-out, transform @motion-fast @ease-in-out;
+  flex-shrink: 0;
+
+  &:hover {
+    color: @ink;
+    transform: rotate(-8deg);
+  }
+}
+
+.doodle-select-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding: 6px;
+  background-color: @paper-card;
+  border: 2.5px solid @ink;
+  border-radius: @wobble-2;
+  box-shadow: @shadow-soft;
+  animation: doodleSelectPop @motion-mid @ease-out;
+}
+
+@keyframes doodleSelectPop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) rotate(-0.3deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.doodle-select-search {
+  width: 100%;
+  padding: 4px 6px;
+  margin-bottom: 6px;
+  border: none;
+  border-bottom: 2px dotted @outline;
+  border-radius: 0;
+  background-color: transparent;
+  color: @ink;
+  font-family: @font-family;
+  font-size: @font-sm;
+  outline: none;
+
+  &:focus {
+    border-bottom-color: @crayon-blue;
+  }
+
+  &::placeholder {
+    color: @ink-3;
+  }
+}
+
+.doodle-select-list {
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.doodle-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: @radius-sm;
+  cursor: pointer;
+  font-family: @font-family;
+  font-size: @font-base;
+  color: @ink;
+  transition: background-color @motion-fast @ease-in-out;
+
+  &:hover {
+    background-color: fade(@crayon-blue, 10%);
+  }
+}
+
+.doodle-select-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doodle-select-check {
+  font-size: 12px;
+  color: @crayon-orange;
+  flex-shrink: 0;
+}
+
+.doodle-select-empty {
+  padding: 10px 6px;
+  text-align: center;
+  color: @ink-3;
+  font-size: @font-sm;
+}
+
+.doodle-select-small {
+  .doodle-select-trigger {
+    padding: 3px 8px;
+
+    .doodle-select-value {
+      font-size: @font-sm;
+    }
+  }
+}

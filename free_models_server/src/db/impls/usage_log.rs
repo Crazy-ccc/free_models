@@ -74,13 +74,6 @@ impl UsageLogStoreSeaorm {
             end_time,
         )?;
 
-        if group_by == "credential" {
-            let items = self.query_stats_table("usage_log", group_by, &where_clause, where_values.clone(), false).await?;
-            let total = self.query_stats_total_single("usage_log", group_by, &where_clause, where_values, false).await?
-                .ok_or_else(|| StoreError::NotFound("No data".to_string()))?;
-            return Ok(UsageLogStatsResponse { total, items });
-        }
-
         let today = chrono::Utc::now().date_naive();
         let (has_historical, has_today) = compute_date_ranges(start_time, end_time, today)?;
         let (daily_where, daily_values) = build_where_clause("stat_date", "<= ?", start_time, end_time)?;
@@ -127,13 +120,13 @@ impl UsageLogStoreSeaorm {
         let backend = self.db.get_database_backend();
         let insert_sql = "\
             INSERT INTO usage_log_daily \
-            (stat_date, api_key_id, api_key_name, provider_config_id, provider_name, \
+            (stat_date, api_key_id, api_key_name, provider_config_id, provider_credential_id, provider_name, \
              model_config_id, model_name, requests, prompt_tokens, completion_tokens, \
              total_tokens, cache_hit_tokens, cache_miss_tokens, avg_duration_ms, min_duration_ms, max_duration_ms) \
             SELECT \
              DATE(request_timestamp) AS stat_date, \
              api_key_id, api_key_name, \
-             provider_config_id, provider_name, \
+             provider_config_id, provider_credential_id, provider_name, \
              model_config_id, model_name, \
              COUNT(*) AS requests, \
              SUM(prompt_tokens) AS prompt_tokens, \
@@ -146,7 +139,7 @@ impl UsageLogStoreSeaorm {
              MAX(duration_ms) AS max_duration_ms \
             FROM usage_log \
             WHERE DATE(request_timestamp) = ? \
-            GROUP BY stat_date, api_key_id, api_key_name, provider_config_id, provider_name, \
+            GROUP BY stat_date, api_key_id, api_key_name, provider_config_id, provider_credential_id, provider_name, \
                      model_config_id, model_name";
         let insert_stmt = Statement::from_sql_and_values(backend, insert_sql, vec![yesterday.into()]);
         self.db.execute_raw(insert_stmt).await.map_err(StoreError::from)?;
@@ -224,7 +217,11 @@ impl UsageLogStoreSeaorm {
             let items = self.query_stats_table("usage_log", group_by, ctx.where_clause, ctx.where_values.to_vec(), false).await?;
             merged = merge_stat_items(merged, items);
         }
-        Ok(merged.into_values().collect())
+        let mut items: Vec<UsageLogStatItem> = merged.into_values().collect();
+        if group_by == "day" {
+            items.sort_by(|a, b| b.dimension_id.as_deref().cmp(&a.dimension_id.as_deref()));
+        }
+        Ok(items)
     }
 
     async fn query_merged_total(
@@ -345,7 +342,7 @@ fn build_group_clauses(group_by: &str, for_usage_log: bool) -> Result<(String, S
         }
         "credential" => Ok((
             "CAST(provider_credential_id AS CHAR) AS dimension_id, \
-             CONCAT('Credential #', provider_credential_id) AS dimension_name"
+             CONCAT('Credential #', COALESCE(provider_credential_id, '')) AS dimension_name"
                 .to_string(),
             "GROUP BY provider_credential_id".to_string(),
             "ORDER BY provider_credential_id".to_string(),
@@ -394,15 +391,15 @@ fn row_to_stat_item(row: &QueryResult, dimension: &str) -> Result<UsageLogStatIt
         dimension: dimension.to_string(),
         dimension_id: row.try_get_by_index::<Option<String>>(0).map_err(StoreError::from)?,
         dimension_name: row.try_get_by_index::<String>(1).map_err(StoreError::from)?,
-        requests: row.try_get_by_index::<i64>(2).map_err(StoreError::from)?,
-        prompt_tokens: row.try_get_by_index::<i64>(3).map_err(StoreError::from)?,
-        completion_tokens: row.try_get_by_index::<i64>(4).map_err(StoreError::from)?,
-        total_tokens: row.try_get_by_index::<i64>(5).map_err(StoreError::from)?,
-        cache_hit_tokens: row.try_get_by_index::<i64>(6).map_err(StoreError::from)?,
-        cache_miss_tokens: row.try_get_by_index::<i64>(7).map_err(StoreError::from)?,
-        avg_duration_ms: row.try_get_by_index::<f64>(8).map_err(StoreError::from)?,
-        min_duration_ms: row.try_get_by_index::<i32>(9).map_err(StoreError::from)?,
-        max_duration_ms: row.try_get_by_index::<i32>(10).map_err(StoreError::from)?,
+        requests: row.try_get_by_index::<Option<i64>>(2).map_err(StoreError::from)?.unwrap_or(0),
+        prompt_tokens: row.try_get_by_index::<Option<i64>>(3).map_err(StoreError::from)?.unwrap_or(0),
+        completion_tokens: row.try_get_by_index::<Option<i64>>(4).map_err(StoreError::from)?.unwrap_or(0),
+        total_tokens: row.try_get_by_index::<Option<i64>>(5).map_err(StoreError::from)?.unwrap_or(0),
+        cache_hit_tokens: row.try_get_by_index::<Option<i64>>(6).map_err(StoreError::from)?.unwrap_or(0),
+        cache_miss_tokens: row.try_get_by_index::<Option<i64>>(7).map_err(StoreError::from)?.unwrap_or(0),
+        avg_duration_ms: row.try_get_by_index::<Option<f64>>(8).map_err(StoreError::from)?.unwrap_or(0.0),
+        min_duration_ms: row.try_get_by_index::<Option<i32>>(9).map_err(StoreError::from)?.unwrap_or(0),
+        max_duration_ms: row.try_get_by_index::<Option<i32>>(10).map_err(StoreError::from)?.unwrap_or(0),
     })
 }
 
@@ -442,7 +439,7 @@ fn compute_date_ranges(
             ) {
                 (Some(s), Some(e)) => {
                     let hist = s < today;
-                    let today_part = e >= today;
+                    let today_part = e >= today - chrono::Duration::days(1);
                     (hist, today_part)
                 }
                 _ => (true, true),

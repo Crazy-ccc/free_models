@@ -12,7 +12,8 @@ interface ToolbarProps {
 function Toolbar({ title, children, showSearch, searchValue, onSearchChange }: ToolbarProps) {
   return (
     <div className="toolbar">
-      <div className="toolbar-title">{title}</div>
+      <h2 className="toolbar-title doodle-squiggle">{title}</h2>
+      <div className="toolbar-spacer" />
       <div className="toolbar-actions">
         {showSearch && (
           <input

@@ -12,6 +12,7 @@ pub struct Config {
     pub cache_affinity_ttl: Duration,
     pub api_key_cache_max_capacity: u64,
     pub circuit_breaker_max_capacity: u64,
+    pub ssrf_cache_max_capacity: u64,
 }
 
 impl Config {
@@ -59,6 +60,10 @@ impl Config {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(10000),
             circuit_breaker_max_capacity: env::var("CIRCUIT_BREAKER_MAX_CAPACITY")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(10000),
+            ssrf_cache_max_capacity: env::var("SSRF_CACHE_MAX_CAPACITY")
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(10000),

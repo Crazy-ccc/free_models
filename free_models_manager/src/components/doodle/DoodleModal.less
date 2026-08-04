@@ -1,0 +1,85 @@
+@import '../../styles/variables.less';
+
+.doodle-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background-color: rgba(55, 48, 38, 0.4);
+}
+
+.doodle-modal {
+  display: flex;
+  flex-direction: column;
+  width: 520px;
+  max-width: 94vw;
+  max-height: 86vh;
+  background-color: @paper-card;
+  border: 3.5px solid @ink;
+  border-radius: @wobble-1;
+  box-shadow: @shadow-soft;
+  transform: rotate(-0.4deg);
+  animation: doodleModalPop @motion-mid @ease-out;
+}
+
+@keyframes doodleModalPop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) rotate(-0.8deg);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-0.4deg);
+  }
+}
+
+.doodle-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 22px;
+  font-family: @font-hand;
+  font-size: 21px;
+  color: @ink;
+  border-bottom: 2.5px dashed rgba(82, 63, 42, 0.35);
+  flex-shrink: 0;
+}
+
+.doodle-modal-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doodle-modal-close {
+  flex-shrink: 0;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  color: @crayon-red;
+  transition: transform @motion-fast @ease-in-out;
+
+  &:hover {
+    transform: rotate(8deg) scale(1.12);
+  }
+}
+
+.doodle-modal-body {
+  padding: 20px 22px;
+  overflow: auto;
+}
+
+.doodle-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 2.5px dashed rgba(82, 63, 42, 0.16);
+  flex-shrink: 0;
+}
