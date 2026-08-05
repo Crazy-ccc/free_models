@@ -13,6 +13,7 @@ pub struct Model {
     pub encrypted_password: Option<String>,
     pub priority: i32,
     pub is_active: bool,
+    pub quota_exhausted: bool,
     pub created_time: DateTime,
     pub last_updated: DateTime,
 }

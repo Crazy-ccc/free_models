@@ -143,6 +143,9 @@ pub async fn test_credential(
         Ok(resp) => {
             let status = resp.status();
             if status.is_success() {
+                if let Err(e) = state.database.provider_credentials.clear_quota_exhausted(cred.id).await {
+                    log::warn!("Failed to clear quota_exhausted for credential {}: {}", cred.id, e);
+                }
                 build_test_response(true, None, elapsed_ms, &body.model_id, &cred)
             } else {
                 let error_text = resp.text().await.unwrap_or_else(|_| status.to_string());

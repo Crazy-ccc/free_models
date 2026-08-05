@@ -1,6 +1,6 @@
 # 数据库表结构文档
 
-系统使用 MySQL 数据库，共 7 张表，通过 Sea-ORM 2 进行访问。以下为各表的完整字段说明。
+系统使用 MySQL 数据库，共 7 张业务表（provider_config、model_config、provider_model_map、api_key、admin_key、provider_credential、usage_log），另有 1 张日汇总表 usage_log_daily，全部通过 Sea-ORM 2 进行访问。以下为各表的完整字段说明。
 
 ---
 
@@ -58,7 +58,7 @@
 | is_active | BOOLEAN | NOT NULL DEFAULT TRUE | 是否启用 |
 | priority | INT | NOT NULL DEFAULT 0 | 在该供应商处的优先级，数值越小越优先转发 |
 | context_length | INT | NULL | 可选，不为空时覆盖 model_config.context_length |
-| protocols | VARCHAR(255) | NOT NULL DEFAULT 'openai' | 支持的协议（`openai` / `anthropic`），逗号分隔 |
+| protocols | VARCHAR(255) | NOT NULL DEFAULT 'openai' | 支持的协议（`openai` / `anthropic` / `responses`），逗号分隔 |
 | status | VARCHAR(16) | NOT NULL DEFAULT 'available' | 状态：`available` / `unavailable` / `deprecated` |
 | timeout | INT | NULL | 可选超时（秒），不为空时覆盖 model_config.timeout |
 | created_time | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP | 创建时间 |
@@ -93,7 +93,7 @@
 | created_time | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP | 创建时间 |
 | last_updated | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 最后更新时间 |
 
-**用途：** 客户端调用 `/v1/chat/completions` 和 `/v1/messages` 时使用 Bearer Token 鉴权。
+**用途：** 客户端调用 `/v1/chat/completions`、`/v1/messages`、`/v1/responses` 时使用 Bearer Token 鉴权。
 
 **自动生成：** 创建时不传 `key_value` 时，系统自动生成 `fm-` 开头 + 64 位随机字母数字。
 
@@ -115,9 +115,9 @@
 | created_time | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP | 创建时间 |
 | last_updated | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 最后更新时间 |
 
-**用途：** 管理员通过 Ed25519 签名访问 Admin API 时，服务端根据 `X-Admin-Fingerprint` 头查询此表获取公钥进行验签。
+**用途：** 管理员通过 Ed25519 签名访问 Admin API 时，服务端根据 `X-Admin-Fingerprint` 头查询此表获取公钥进行验签（`AdminKeyStoreSeaorm::find_active_by_fingerprint`，仅匹配 `is_active = true` 的行）。
 
-**指纹自动填充：** 服务启动时自动扫描 `fingerprint IS NULL` 的行，解析公钥计算 SHA256 指纹并回填。
+**指纹格式：** Ed25519 raw 公钥（32 字节）→ SHA256 哈希 → Base64 无填充编码 → 添加 `SHA256:` 前缀，与请求头 `X-Admin-Fingerprint` 一一对应。
 
 ---
 
@@ -135,6 +135,7 @@
 | encrypted_password | VARCHAR(512) | NULL | AES-256-GCM 加密后的密码 |
 | priority | INT | NOT NULL DEFAULT 0 | 优先级，数值越小越优先使用 |
 | is_active | BOOLEAN | NOT NULL DEFAULT TRUE | 是否启用 |
+| quota_exhausted | BOOLEAN | NOT NULL DEFAULT FALSE | 是否因配额耗尽被标记（006 迁移新增），为 true 时调度会跳过该凭证 |
 | created_time | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP | 创建时间 |
 | last_updated | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 最后更新时间 |
 
@@ -146,7 +147,15 @@
 - `api_key` 和 `encrypted_password` 使用 AES-256-GCM 加密
 - 加密密钥来自环境变量 `ENCRYPTION_KEY`（64 位 hex = 32 字节）
 - 每次加密生成随机 12 字节 nonce，以 base64(nonce + ciphertext) 格式存储
-- Admin API 返回时自动解密为明文
+- Admin API 返回时自动解密，`api_key` 以掩码（前 4 位 + `****`）返回，`password` 一律返回 `****`
+
+**配额持久化（quota_exhausted）：**
+- 上游返回凭证/配额类错误（如 401 / 429 配额不足）时，`proxy_service` 会调用 `mark_quota_exhausted` 将该凭证标记为 `quota_exhausted = true` 并持久化到数据库，服务重启后依然生效
+- 调度转发时（`proxy_service` 内层循环）会跳过 `quota_exhausted = true` 的凭证，不发起请求
+- 重置方式：
+  - 调用 `POST /admin/provider_credentials/{id}/reset_status`（同时调用熔断器 `reset_credential` 清除惩罚记录）
+  - 更新该凭证的 `api_key` 时自动清除（`ProviderCredentialStoreSeaorm::update` 中 `new_api_key` 非空即重置 `quota_exhausted = false`）
+  - 凭证连通性测试成功（`/admin/test_credential`）时也会自动清除
 
 ---
 
@@ -164,13 +173,13 @@
 | provider_credential_id | INT | NULL | 使用的凭证 ID |
 | model_name | VARCHAR(255) | NOT NULL | 模型名称 |
 | provider_name | VARCHAR(255) | NOT NULL | 供应商名称 |
-| protocol | VARCHAR(32) | NOT NULL DEFAULT 'openai' | 协议类型（`openai` / `anthropic`） |
+| protocol | VARCHAR(32) | NOT NULL DEFAULT 'openai' | 协议类型（`openai` / `anthropic` / `responses`） |
 | status | VARCHAR(16) | NOT NULL DEFAULT 'success' | 请求状态（`success` / `failed`） |
 | error_message | TEXT | NULL | 错误信息（失败时记录） |
 | prompt_tokens | INT | NOT NULL DEFAULT 0 | prompt token 数 |
 | completion_tokens | INT | NOT NULL DEFAULT 0 | 生成 token 数 |
 | total_tokens | INT | NOT NULL DEFAULT 0 | 总 token 数 |
-| cache_hit_tokens | INT | NOT NULL DEFAULT 0 | 缓存命中的 token 数（仅 OpenAI） |
+| cache_hit_tokens | INT | NOT NULL DEFAULT 0 | 缓存命中的 token 数（各协议的解析来源见下方表格） |
 | cache_miss_tokens | INT | NOT NULL DEFAULT 0 | 缓存未命中的 token 数 |
 | duration_ms | INT | NOT NULL DEFAULT 0 | 请求耗时（毫秒） |
 | is_stream | BOOLEAN | NOT NULL DEFAULT FALSE | 是否为流式请求 |
@@ -194,13 +203,13 @@
 
 **Protocol 用量解析差异：**
 
-| 字段 | OpenAI | Anthropic |
-|------|--------|-----------|
-| prompt_tokens | `usage.prompt_tokens` | `usage.input_tokens` |
-| completion_tokens | `usage.completion_tokens` | `usage.output_tokens` |
-| total_tokens | `usage.total_tokens` | `input_tokens + output_tokens` |
-| cache_hit_tokens | `usage.prompt_tokens_details.cached_tokens.prompt_cache_hit_tokens` | `usage.cache_read_input_tokens` |
-| cache_miss_tokens | `prompt_tokens - cached_tokens` | `input_tokens` |
+| 字段 | OpenAI | Anthropic | Responses |
+|------|--------|-----------|-----------|
+| prompt_tokens | `usage.prompt_tokens` | `usage.input_tokens` | `usage.input_tokens` |
+| completion_tokens | `usage.completion_tokens` | `usage.output_tokens` | `usage.output_tokens` |
+| total_tokens | `usage.total_tokens` | `input_tokens + output_tokens` | `usage.total_tokens` |
+| cache_hit_tokens | `usage.prompt_tokens_details.cached_tokens`（fallback `usage.prompt_cache_hit_tokens`） | `usage.cache_read_input_tokens` | `usage.input_tokens_details.cached_tokens` |
+| cache_miss_tokens | `prompt_tokens - cached_tokens` | `input_tokens` | `input_tokens - cached_tokens` |
 
 ---
 
@@ -215,6 +224,7 @@
 | api_key_id | INT | NULL | API Key ID |
 | api_key_name | VARCHAR(255) | NULL | API Key 名称 |
 | provider_config_id | INT | NULL | 供应商 ID |
+| provider_credential_id | INT | NULL | 使用的凭证 ID（005 迁移新增） |
 | provider_name | VARCHAR(255) | NOT NULL | 供应商名称 |
 | model_config_id | INT | NULL | 模型配置 ID |
 | model_name | VARCHAR(255) | NOT NULL | 模型名称 |
@@ -235,7 +245,23 @@
 | uk_daily | stat_date, api_key_id, provider_config_id, model_config_id | UNIQUE 约束，每日去重 |
 | idx_stat_date | stat_date | 按日期查询 |
 | idx_provider_config_id | provider_config_id | 按供应商查询 |
+| idx_provider_credential_id | provider_credential_id | 按凭证查询（005 迁移新增） |
 | idx_model_config_id | model_config_id | 按模型查询 |
 | idx_api_key_id | api_key_id | 按 API Key 查询 |
 
-**归档逻辑：** 由后台定时任务每日凌晨 00:05（UTC）执行 `usage_log_service::archive_yesterday`，从 `usage_log` 表按 `(api_key_id, provider_config_id, model_config_id)` 分组汇总后插入。
+**归档逻辑：** 由后台定时任务每日凌晨 00:05（UTC）执行 `UsageLogStoreSeaorm::archive_yesterday`（`src/db/impls/usage_log.rs`，由 `task.rs` 的 `spawn_daily_archive` 调度，失败时指数退避重试，上限 1 小时）。归档时从 `usage_log` 表按 `(stat_date, api_key_id, api_key_name, provider_config_id, provider_credential_id, provider_name, model_config_id, model_name)` 分组汇总后插入 `usage_log_daily`，随后删除对应日期的原始明细。统计查询（`/admin/usage_log/stats`）将 `usage_log_daily`（历史）+ `usage_log`（当日）合并聚合返回。
+
+---
+
+## 迁移文件清单
+
+迁移为 `migrations/` 目录下的手动 SQL 文件，需按顺序执行（`mysql -u root -p free_models < migrations/NNN_xxx.sql`）：
+
+| 文件 | 内容 |
+|------|------|
+| 001_init.sql | 创建 `provider_config`、`model_config`（含 provider_id、model_id、protocols、status、priority 字段）、`api_key` 三张表 |
+| 002_add_model_config_columns.sql | `model_config` 新增 `model_id`、`timeout`、`protocols` 字段 |
+| 003_add_admin_key_and_usage.sql | 创建 `admin_key`、`usage_log`、`provider_credential` 三张表；`model_config` 新增 `context_length` 字段 |
+| 004_create_usage_log_daily.sql | 创建 `usage_log_daily` 日汇总表 |
+| 005_create_provider_model_map.sql | 创建 `provider_model_map` 映射表；将 `model_config` 中的 provider_id / model_id / protocols / status / context_length / timeout 迁移到映射表；从 `model_config` 删除 provider_id、protocols、status、model_id 并新增 `is_active`；`usage_log_daily` 新增 `provider_credential_id` 字段及索引 |
+| 006_add_credential_status_fields.sql | `provider_credential` 新增 `quota_exhausted BOOLEAN NOT NULL DEFAULT FALSE` 字段 |

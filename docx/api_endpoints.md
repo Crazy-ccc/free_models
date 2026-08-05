@@ -28,7 +28,7 @@ GET /v1/models
 Authorization: Bearer <api_key>
 ```
 
-返回所有可用模型列表（OpenAI 兼容格式）。仅返回 `status = 'available'` 且关联供应商有活跃凭证的模型。
+返回所有可用模型列表（OpenAI 兼容格式）。模型可用性判定：活跃 `model_config` + 存在 `provider_model_map` 且对应供应商有活跃凭证。
 
 **响应示例：**
 ```json
@@ -65,20 +65,19 @@ Content-Type: application/json
 ```
 
 **处理流程：**
-1. 校验 `messages` 字段非空
-2. 查询所有可用模型，过滤出支持 openai 协议的
-3. 若指定 `model`，将匹配模型排到最前
-4. 被惩罚的模型排到最后
-5. 估算 prompt token，过滤上下文窗口不足的模型
-6. 遍历模型列表向上游转发
-7. 首次成功即返回，失败则标记惩罚并尝试下一个
+1. 校验 `messages` 字段为非空数组
+2. `schedule_all_available` 查询可用模型，`supports_protocol` 过滤出支持 `openai` 协议的模型
+3. 若指定 `model`，`merge_preferred_first` 将匹配模型排到最前
+4. 估算 prompt token，`filter_by_context_window` 过滤上下文窗口不足的模型
+5. `reorder_by_affinity` 亲和排序（优先复用该 API Key 上次成功转发的目标）
+6. 三重循环（模型 → 映射 → 凭证）向上游转发：跳过 `quota_exhausted` 的凭证与熔断中的目标
+7. 转发成功即返回；可重试错误（429 非配额 / 500/502/503/504 / 网络错误 / 超时）按退避等待后重试一次；凭证级失败（401/402/403、429 配额）尝试下一凭证
 8. 全部失败返回 503
 
 **流式响应（`stream: true`）：**
-- 自动设置 `stream_options: {"include_usage": true}`
-- 在流中检测 `usage` 字段并记录用量日志
-- 结束时发送 `data: [DONE]`
-- 流中断时发送 `data: [DONE]` 关闭帧
+- 强制 `stream=true`，OpenAI 协议自动设置 `stream_options: {"include_usage": true}`
+- 后台 `SseScanner` 在流中检测 `usage` 字段并记录用量日志；检测到流内嵌错误即中断转发
+- **SSE 数据原样透传，不伪造结束帧**（`data: [DONE]` 由上游数据自然携带，服务端不生成）
 
 ### Anthropic Messages（Anthropic 协议）
 
@@ -88,7 +87,7 @@ Authorization: Bearer <api_key>
 Content-Type: application/json
 ```
 
-标准 Anthropic Messages API 代理。
+标准 Anthropic Messages API 代理。支持 `stream: true` 流式响应。
 
 **请求体示例：**
 ```json
@@ -100,9 +99,35 @@ Content-Type: application/json
 ```
 
 **处理流程：** 与 OpenAI 协议相同，但：
-- 按 `anthropic` 协议筛选模型
-- 添加 `x-api-key` 和 `anthropic-version: 2023-06-01` 请求头
+- 校验 `messages` 字段为非空数组，按 `anthropic` 协议筛选模型
+- 上游路径为 `/messages`，添加 `x-api-key` 和 `anthropic-version: 2023-06-01` 请求头
 - 错误响应使用 Anthropic 格式
+- 流式时用量从 `usage` 字段提取，SSE 数据原样透传，不伪造结束帧
+
+### Responses API（OpenAI Responses 协议）
+
+```
+POST /v1/responses
+Authorization: Bearer <api_key>
+Content-Type: application/json
+```
+
+OpenAI Responses API 代理。支持 `stream: true` 流式响应。
+
+**请求体示例：**
+```json
+{
+    "model": "gpt-4o",
+    "input": "Hello"
+}
+```
+
+**处理流程：** 与 OpenAI 协议相同，但：
+- 校验 `input` 字段为非空字符串或非空数组
+- 按 `responses` 协议筛选模型
+- 上游路径为 `/responses`，鉴权头使用 `Authorization: Bearer`
+- 流式时用量从 `usage` 或 `response.usage` 字段提取，SSE 数据原样透传，不伪造结束帧
+- 错误响应使用 OpenAI 格式
 
 ---
 
@@ -137,15 +162,23 @@ GET /admin/service/status
         "active": 4,
         "inactive": 1
     },
-    "penalties": []
+    "penalties": [
+        {
+            "modelName": "gpt-3.5-turbo",
+            "providerName": "provider-a",
+            "credentialId": 1,
+            "remainingSecs": 120
+        }
+    ]
 }
 ```
 
 **统计规则：**
-- `models.active`：`status = 'available'` 的模型数
+- `models.active`：真正可用的模型数（活跃 `model_config` + 活跃 `provider_model_map` + 活跃 `provider_credential` 三重校验）
 - `models.inactive`：`total - active`
 - `providers.active`：有活跃凭证的唯一供应商数
 - `apiKeys.active`：`is_active = true` 的 API Key 数
+- `penalties`：当前处于熔断状态的「模型 / 供应商 / 凭证」目标及剩余秒数
 
 ### 刷新缓存
 
@@ -153,7 +186,7 @@ GET /admin/service/status
 POST /admin/cache/refresh
 ```
 
-清空所有缓存（ModelCache、ProviderCache、ApiKeyCache、惩罚记录）。
+清空调度缓存（`SchedulerCache`：Redis + moka）并刷新 API Key 缓存。
 
 **响应示例：**
 ```json
@@ -186,6 +219,8 @@ Content-Type: application/json
 }
 ```
 
+`base_url` 会经 SSRF 安全校验（仅允许 http/https，拒绝内网地址等），校验失败返回 400。
+
 #### 更新供应商
 
 ```
@@ -198,6 +233,8 @@ Content-Type: application/json
 }
 ```
 
+同样会经 SSRF 安全校验。
+
 #### 删除供应商
 
 ```
@@ -209,6 +246,59 @@ DELETE /admin/providers/{id}
 {"status": "ok"}
 ```
 
+### 供应商模型导入
+
+#### 拉取供应商模型列表
+
+```
+GET /admin/providers/{id}/models
+```
+
+使用该供应商第一个活跃凭证，向 `{base_url}/models` 发起请求（经 SSRF 校验），从响应顶层数组 / `data` / `models` 字段中提取模型 `id`。
+
+**响应示例：**
+```json
+[
+    {"id": "gpt-3.5-turbo"},
+    {"id": "gpt-4"}
+]
+```
+
+#### 一键导入映射
+
+```
+POST /admin/providers/{id}/models/import
+Content-Type: application/json
+
+[
+    {
+        "model_id": "gpt-3.5-turbo",
+        "provider_model_id": "gpt-3.5-turbo-0125",
+        "protocols": "openai",
+        "context_length": 256000
+    }
+]
+```
+
+导入 = 创建或更新 `provider_model_map`（**不会**自动创建 `model_config`，对应模型需先在 `/admin/models` 创建）：
+- 已存在映射：更新 `provider_model_id`、`protocols`（默认 `openai`）、`context_length`
+- 不存在映射：创建，默认 `is_active=true`、`priority=9`、`status="available"`、`timeout=30`、`context_length` 默认 256000
+- 对应模型不存在时报错（记入 `errors`）
+
+**响应示例：**
+```json
+{
+    "imported": [
+        {
+            "name": "gpt-3.5-turbo",
+            "model_config_id": 1,
+            "provider_model_id": "gpt-3.5-turbo-0125"
+        }
+    ],
+    "errors": []
+}
+```
+
 ### 模型管理
 
 #### 列出所有模型
@@ -217,23 +307,21 @@ DELETE /admin/providers/{id}
 GET /admin/models
 ```
 
-返回所有模型（含供应商名称）。
+返回所有模型配置（`model_config` 表）。
 
 **模型字段：**
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | int | 主键 |
-| provider_id | int | 关联供应商 ID |
 | name | string | 模型对外名称 |
-| model_id | string | 上游 API 实际使用的 model 值 |
+| timeout | int | 默认超时秒数（映射可覆盖） |
 | priority | int | 优先级（越小越优先） |
-| status | string | 状态：`available` / `disabled` |
-| timeout | int | 超时秒数 |
-| protocols | string | 协议列表，逗号分隔：`openai,anthropic` |
-| context_length | int | 上下文窗口大小 |
+| is_active | bool | 是否启用 |
+| context_length | int | 默认上下文窗口大小（映射可覆盖） |
 | created_time | datetime | 创建时间 |
 | last_updated | datetime | 最后更新时间 |
-| provider_name | string | 供应商名称（拓展字段） |
+
+> 供应商关联、上游 `model_id`、协议、可用状态等字段已移至 `provider_model_maps` 表，见下文「供应商模型映射管理」。
 
 #### 获取单个模型
 
@@ -248,34 +336,24 @@ POST /admin/models
 Content-Type: application/json
 
 {
-    "provider_id": 1,
     "name": "gpt-3.5-turbo",
-    "model_id": "gpt-3.5-turbo",
     "timeout": 30,
-    "protocols": "openai",
     "priority": 0,
-    "status": "available",
-    "context_length": 256000
+    "context_length": 256000,
+    "is_active": true
 }
 ```
+
+`is_active` 可选，默认 `true`。
 
 #### 更新模型
 
 ```
 PUT /admin/models/{id}
 Content-Type: application/json
-
-{
-    "provider_id": 1,
-    "name": "gpt-3.5-turbo",
-    "model_id": "gpt-3.5-turbo",
-    "timeout": 30,
-    "protocols": "openai",
-    "priority": 0,
-    "status": "available",
-    "context_length": 256000
-}
 ```
+
+body 为任意可选字段：`name` / `timeout` / `priority` / `is_active` / `context_length`。
 
 #### 删除模型
 
@@ -319,11 +397,12 @@ PUT /admin/api_keys/{id}
 Content-Type: application/json
 
 {
-    "key_value": "fm-xxxx...",
     "name": "My Key",
     "is_active": true
 }
 ```
+
+仅支持更新 `name` 与 `is_active`（`key_value` 不可通过该端点修改）。
 
 #### 删除 API Key
 
@@ -333,7 +412,7 @@ DELETE /admin/api_keys/{id}
 
 ### 供应商凭证管理
 
-凭证存储时使用 AES-256-GCM 加密，返回时自动解密。
+凭证存储时使用 AES-256-GCM 加密，返回时自动解密并掩码。
 
 #### 列出凭证
 
@@ -350,16 +429,21 @@ GET /admin/provider_credentials?provider_id={id}
         "id": 1,
         "provider_id": 1,
         "name": "Credential 1",
-        "api_key": "sk-...",
+        "api_key": "sk-****",
         "account": null,
         "password": null,
         "priority": 0,
         "is_active": true,
+        "quota_exhausted": false,
         "created_time": "2024-01-01T00:00:00",
         "last_updated": "2024-01-01T00:00:00"
     }
 ]
 ```
+
+- `api_key`：返回前 4 位 + `****` 掩码
+- `password`：返回 `****` 掩码
+- `quota_exhausted`：配额是否已耗尽（耗尽时调度自动跳过该凭证）
 
 #### 获取单个凭证
 
@@ -412,10 +496,103 @@ Content-Type: application/json
 DELETE /admin/provider_credentials/{id}
 ```
 
+#### 重置凭证状态
+
+```
+POST /admin/provider_credentials/{id}/reset_status
+```
+
+清除该凭证的 `quota_exhausted` 标记，并重置其全部熔断条目（`CircuitBreaker::reset_credential`）。
+
+**响应示例：**
+```json
+{"success": true}
+```
+
+### 供应商模型映射管理
+
+`provider_model_map` 将「模型配置 × 供应商」关联为具体的上游模型，承载协议、超时、上下文窗口、优先级等覆盖字段。
+
+#### 列出映射
+
+```
+GET /admin/provider_model_maps?model_id={id}&provider_id={id}
+```
+
+可选 `model_id` / `provider_id` 查询参数过滤。
+
+**响应示例（数组元素）：**
+```json
+{
+    "id": 1,
+    "model_id": 1,
+    "provider_id": 1,
+    "provider_model_id": "gpt-3.5-turbo-0125",
+    "is_active": true,
+    "priority": 0,
+    "context_length": 256000,
+    "protocols": "openai",
+    "status": "available",
+    "timeout": 30,
+    "created_time": "2024-01-01T00:00:00",
+    "last_updated": "2024-01-01T00:00:00"
+}
+```
+
+- `context_length` / `timeout`：可为 `null`，为 null 时转发回退使用模型配置值
+
+#### 获取单个映射
+
+```
+GET /admin/provider_model_maps/{id}
+```
+
+#### 创建映射
+
+```
+POST /admin/provider_model_maps
+Content-Type: application/json
+
+{
+    "model_id": 1,
+    "provider_id": 1,
+    "provider_model_id": "gpt-3.5-turbo-0125",
+    "is_active": true,
+    "priority": 0,
+    "protocols": "openai",
+    "status": "available",
+    "timeout": 30,
+    "context_length": 256000
+}
+```
+
+- 必填：`model_id`、`provider_id`、`provider_model_id`、`protocols`
+- 可选：`is_active`（默认 `true`）、`priority`（默认 0）、`status`（默认 `"available"`）、`timeout`、`context_length`
+
+#### 更新映射
+
+```
+PUT /admin/provider_model_maps/{id}
+Content-Type: application/json
+```
+
+body 为任意可选字段：`provider_model_id` / `is_active` / `priority` / `protocols` / `status` / `timeout` / `context_length`。
+
+#### 删除映射
+
+```
+DELETE /admin/provider_model_maps/{id}
+```
+
+**响应示例：**
+```json
+{"status": "ok"}
+```
+
 ### 使用统计
 
 ```
-GET /admin/usage/stats?group_by=<维度>&start_time=<ISO>&end_time=<ISO>
+GET /admin/usage_log/stats?group_by=<维度>&start_time=<ISO>&end_time=<ISO>
 ```
 
 获取使用量统计数据，支持多维度分组和时间筛选。
@@ -423,9 +600,11 @@ GET /admin/usage/stats?group_by=<维度>&start_time=<ISO>&end_time=<ISO>
 **查询参数：**
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `group_by` | 是 | 分组维度：`provider` / `credential` / `model` / `api_key` / `day` |
+| `group_by` | 是 | 分组维度：`provider` / `model` / `api_key` / `day` / `credential` / `provider_model` |
 | `start_time` | 否 | 开始时间（ISO 格式），用于时间范围筛选 |
 | `end_time` | 否 | 结束时间（ISO 格式） |
+
+`group_by` 仅接受上述白名单，其他值返回 400。
 
 **响应示例：**
 ```json
@@ -453,73 +632,9 @@ GET /admin/usage/stats?group_by=<维度>&start_time=<ISO>&end_time=<ISO>
 }
 ```
 
-### 管理员公钥管理
+### Admin 公钥管理
 
-#### 列出所有公钥
-
-```
-GET /admin/admin_keys
-```
-
-#### 创建公钥
-
-```
-POST /admin/admin_keys
-Content-Type: application/json
-
-{
-    "name": "My Key",
-    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...",
-    "is_active": true
-}
-```
-
-服务端会自动解析公钥计算 SHA256 指纹并回填到 `fingerprint` 字段。
-
-#### 更新公钥
-
-```
-PUT /admin/admin_keys/{id}
-Content-Type: application/json
-
-{
-    "name": "My Key",
-    "is_active": true
-}
-```
-
-#### 删除公钥
-
-```
-DELETE /admin/admin_keys/{id}
-```
-
-### 供应商模型映射管理
-
-#### 列出映射
-
-```
-GET /admin/provider_model_maps?provider_id={id}
-```
-
-#### 创建映射
-
-```
-POST /admin/provider_model_maps
-Content-Type: application/json
-
-{
-    "provider_id": 1,
-    "model_id": "gpt-3.5-turbo",
-    "remote_model_id": "gpt-3.5-turbo-0125"
-}
-```
-
-#### 删除映射
-
-```
-DELETE /admin/provider_model_maps/{id}
-```
+服务端管理端鉴权使用 Ed25519 签名，公钥存储在数据库 `admin_key` 表中（fingerprint 由 Ed25519 公钥 SHA256 生成，格式 `SHA256:` 前缀 + Base64 无填充）。**当前未开放 HTTP 管理接口**，公钥的增删改直接操作数据库完成。签名鉴权细节见 [authentication.md](./authentication.md)。
 
 ### 测试凭证连接
 
@@ -529,7 +644,7 @@ Content-Type: application/json
 
 {
     "credential_id": 1,
-    "model_id": "gpt-3.5-turbo",
+    "model_id": "gpt-3.5-turbo-0125",
     "prompt": "Hello"
 }
 ```
@@ -541,7 +656,7 @@ Content-Type: application/json
 {
     "success": true,
     "response_time_ms": 1234,
-    "model_id": "gpt-3.5-turbo",
+    "model_id": "gpt-3.5-turbo-0125",
     "provider_id": 1,
     "credential_id": 1,
     "error": null
@@ -550,12 +665,12 @@ Content-Type: application/json
 
 **处理流程：**
 1. 根据 `credential_id` 查库获取凭证
-2. 解密凭证中的 `api_key`
-3. 根据 `credential.provider_id` 获取供应商信息
-4. 根据 `model_id` 和 `provider_id` 获取模型配置
-5. 根据模型支持的协议确定请求地址
-6. 发送测试请求（`max_tokens: 10`）
-7. 返回成功/失败及响应时间
+2. 根据 `credential.provider_id` 获取供应商
+3. 查询该供应商的映射，找到 `provider_model_id == model_id` 的映射（`model_id` 传上游模型值）
+4. 解密凭证中的 `api_key`
+5. 根据映射 `protocols` 是否包含 `anthropic` 决定请求地址与鉴权头：Anthropic → `{base_url}/messages` + `x-api-key` + `anthropic-version: 2023-06-01`；否则 → `{base_url}/chat/completions` + `Authorization: Bearer`
+6. 经 SSRF 校验后发送测试请求（`max_tokens: 10`）
+7. 返回成功/失败及响应时间；成功时自动清除该凭证的 `quota_exhausted` 标记
 
 ---
 
@@ -592,3 +707,11 @@ Content-Type: application/json
 - `authentication_error`：鉴权失败
 - `invalid_request_error`：请求参数错误
 - `api_error`：服务端错误 / 服务不可用
+
+### Admin 扁平格式
+
+Admin 接口（以及数据库错误）使用扁平结构：
+
+```json
+{"error": "错误描述"}
+```

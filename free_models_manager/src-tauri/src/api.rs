@@ -264,6 +264,14 @@ impl AdminClient {
         Ok(())
     }
 
+    pub async fn reset_provider_credential_status(&self, id: i32) -> Result<Value, String> {
+        let resp = self.signed_request("POST", &format!("/admin/provider_credentials/{}/reset_status", id), None).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
     pub async fn test_provider_credential(&self, credential_id: i32, model_id: String, prompt: Option<String>) -> Result<Value, String> {
         let body = serde_json::json!({
             "credential_id": credential_id,

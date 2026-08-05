@@ -179,6 +179,17 @@ function CredentialsPage({
     }
   };
 
+  const handleResetStatus = async (cred: ProviderCredential) => {
+    try {
+      await invoke('reset_provider_credential_status', { serverUrl, id: cred.id });
+      DoodleMessage.success(`凭证「${cred.name || cred.id}」状态已重置`);
+      load();
+    } catch (e) {
+      console.error(e);
+      DoodleMessage.error('重置失败');
+    }
+  };
+
   const runTest = async (cred: ProviderCredential, modelId: string) => {
     setTestLoading(true);
     try {
@@ -244,6 +255,7 @@ function CredentialsPage({
               <th>Key</th>
               <th>账号</th>
               <th>优先级</th>
+              <th>状态</th>
               <th>启用</th>
               <th>操作</th>
             </tr>
@@ -251,7 +263,7 @@ function CredentialsPage({
           <tbody>
             {credentials.length === 0 ? (
               <tr>
-                <td colSpan={6} className="providers-empty">暂无凭证</td>
+                <td colSpan={7} className="providers-empty">暂无凭证</td>
               </tr>
             ) : (
               credentials.map((c) => (
@@ -261,12 +273,26 @@ function CredentialsPage({
                   <td>{c.account || '-'}</td>
                   <td>{c.priority}</td>
                   <td>
+                    <div className="cred-status">
+                      {c.quota_exhausted ? (
+                        <>
+                          <DoodleTag color="error">额度耗尽</DoodleTag>
+                        </>
+                      ) : (
+                        <DoodleTag color="available">正常</DoodleTag>
+                      )}
+                    </div>
+                  </td>
+                  <td>
                     <div className="toggle-wrap">
                       <Toggle checked={c.is_active} onChange={() => toggleActive(c)} />
                     </div>
                   </td>
                   <td>
                     <DoodleButton size="small" style={{ marginRight: 8 }} disabled={testLoading} onClick={() => openTest(c)}>测试</DoodleButton>
+                    {c.quota_exhausted && (
+                      <DoodleButton size="small" style={{ marginRight: 8 }} onClick={() => handleResetStatus(c)}>重置状态</DoodleButton>
+                    )}
                     <DoodleButton size="small" style={{ marginRight: 8 }} onClick={() => openEdit(c)}>编辑</DoodleButton>
                     <DoodleButton size="small" type="danger" onClick={() => handleDelete(c)}>删除</DoodleButton>
                   </td>

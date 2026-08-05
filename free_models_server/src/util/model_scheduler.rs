@@ -39,6 +39,7 @@ pub struct CredentialInfo {
     pub provider_credential_id: i32,
     pub api_key: String,
     pub priority: i32,
+    pub quota_exhausted: bool,
 }
 
 impl ModelScheduleInfo {
@@ -219,6 +220,7 @@ fn build_model_info(
                 provider_credential_id: credential.id,
                 api_key: decrypted_key,
                 priority: credential.priority,
+                quota_exhausted: credential.quota_exhausted,
             });
         }
 

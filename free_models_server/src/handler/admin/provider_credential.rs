@@ -45,6 +45,7 @@ pub struct ProviderCredentialResponse {
     pub password: Option<String>,
     pub priority: i32,
     pub is_active: bool,
+    pub quota_exhausted: bool,
     pub created_time: chrono::NaiveDateTime,
     pub last_updated: chrono::NaiveDateTime,
 }
@@ -67,6 +68,7 @@ impl ProviderCredentialResponse {
             password: password.map(|_| "****".to_string()),
             priority: m.priority,
             is_active: m.is_active,
+            quota_exhausted: m.quota_exhausted,
             created_time: m.created_time,
             last_updated: m.last_updated,
         })
@@ -172,4 +174,18 @@ pub async fn update_provider_credential(
 
 pub async fn delete_provider_credential(state: web::Data<AppState>, path: web::Path<i32>) -> HttpResponse {
     handle_delete!(state.database.provider_credentials.delete(path.into_inner()).await, "Credential not found")
+}
+
+pub async fn reset_provider_credential_status(state: web::Data<AppState>, path: web::Path<i32>) -> HttpResponse {
+    let id = path.into_inner();
+    match state.database.provider_credentials.clear_quota_exhausted(id).await {
+        Ok(()) => {
+            state.priority_penalty.reset_credential(id);
+            HttpResponse::Ok().json(serde_json::json!({"success": true}))
+        }
+        Err(e) => {
+            log::error!("{}", e);
+            response::from_store_error(e)
+        }
+    }
 }

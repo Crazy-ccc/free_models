@@ -30,6 +30,7 @@ pub struct CredentialUpdate {
     pub is_active: Option<bool>,
 }
 
+#[derive(Clone)]
 pub struct ProviderCredentialStoreSeaorm {
     db: sea_orm::DatabaseConnection,
 }
@@ -95,7 +96,10 @@ impl ProviderCredentialStoreSeaorm {
         let mut active: ActiveModel = model.into();
         if let Some(v) = update.provider_id { active.provider_id = Set(v); }
         if let Some(v) = &update.name { active.name = Set(v.clone()); }
-        if let Some(v) = &update.new_api_key { active.api_key = Set(v.clone()); }
+        if let Some(v) = &update.new_api_key {
+            active.api_key = Set(v.clone());
+            active.quota_exhausted = Set(false);
+        }
         if let Some(v) = &update.account { active.account = Set(Some(v.clone())); }
         if let Some(v) = &update.password { active.encrypted_password = Set(Some(v.clone())); }
         if let Some(v) = update.priority { active.priority = Set(v); }
@@ -103,6 +107,30 @@ impl ProviderCredentialStoreSeaorm {
         let updated = active.update(&self.db).await
             .map_err(StoreError::from)?;
         Ok(updated)
+    }
+
+    pub async fn mark_quota_exhausted(&self, id: i32) -> Result<(), StoreError> {
+        let model = Entity::find_by_id(id).one(&self.db).await
+            .map_err(StoreError::from)?;
+        let model = model.ok_or_else(|| StoreError::NotFound(format!("ProviderCredential id={}", id)))?;
+
+        let mut active: ActiveModel = model.into();
+        active.quota_exhausted = Set(true);
+        active.update(&self.db).await
+            .map_err(StoreError::from)?;
+        Ok(())
+    }
+
+    pub async fn clear_quota_exhausted(&self, id: i32) -> Result<(), StoreError> {
+        let model = Entity::find_by_id(id).one(&self.db).await
+            .map_err(StoreError::from)?;
+        let model = model.ok_or_else(|| StoreError::NotFound(format!("ProviderCredential id={}", id)))?;
+
+        let mut active: ActiveModel = model.into();
+        active.quota_exhausted = Set(false);
+        active.update(&self.db).await
+            .map_err(StoreError::from)?;
+        Ok(())
     }
 
     impl_delete_by_id!(crate::db::entities::provider_credential::Entity);

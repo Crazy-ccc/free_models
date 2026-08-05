@@ -2,38 +2,39 @@
 
 ## 项目概述
 
-`free_models_token` 是一个统一的免费模型代理服务系统。它对外暴露类 OpenAI 与 Anthropic 兼容接口，按优先级和可用性将请求智能转发到多个上游 LLM 供应商。
+`free_models_token` 是一个统一的免费模型代理服务系统。它对外暴露类 OpenAI（chat/completions 与 responses）、Anthropic（messages）兼容接口，按优先级和可用性将请求智能转发到多个上游 LLM 供应商。
 
-项目采用双目录结构：后端代理服务（Rust） + Tauri 桌面管理端。
+项目采用双目录结构：后端代理服务（Rust）+ Tauri 桌面管理端。
 
 ## 整体架构
 
 ```
                      ┌──────────────────────────────────┐
-                     │   客户端 (OpenAI SDK / cURL 等)    │
+                     │   客户端 (OpenAI/Anthropic SDK)   │
                      └───────────────┬──────────────────┘
                                      │ Bearer Token
                                      ▼
 ┌─────────────────────────────────────────────────────────┐
-│              free_models_server (Rust)                    │
+│              free_models_server (Rust 单 crate)          │
 │                                                          │
-│  ┌──────────┐  ┌───────────┐  ┌──────────────────┐      │
-│  │  Auth     │  │  Chat     │  │  Admin           │      │
-│  │ Middleware │  │  Handler  │  │  Handler         │      │
-│  └─────┬────┘  └─────┬─────┘  └───────┬──────────┘      │
-│        │              │                │                 │
-│   ┌────▼──────────────▼────────────────▼──────────────┐  │
-│   │                  Service Layer                     │  │
-│   │  model_service / provider_service / proxy_service  │  │
-│   │  api_key_service / usage_log_service / ...         │  │
+│  ┌──────────┐  ┌─────────────┐  ┌──────────────────┐    │
+│  │  Auth     │  │  Chat       │  │  Admin           │    │
+│  │ Middleware │  │  Handler    │  │  Handler (多文件)│    │
+│  └─────┬────┘  └─────┬───────┘  └───────┬──────────┘    │
+│        │              │                  │               │
+│   ┌────▼──────────────▼──────────────────▼────────────┐  │
+│   │                Service 层                          │  │
+│   │      proxy_service / provider_credential_service   │  │
 │   └────────────────────┬──────────────────────────────┘  │
-│                        │ 通过 Arc<dyn StoreTrait> 调用   │
+│                        │ 直接调用具体 Store 结构体        │
 │   ┌────────────────────▼──────────────────────────────┐  │
-│   │        Data Access Abstraction (三层 crate)        │  │
-│   │                                                    │  │
-│   │  free_models_store_api (接口层: trait + DTO)       │  │
-│   │  └── free_models_store (实现层: SeaORM + Redis)   │  │
+│   │     数据访问层（单 crate 模块化）                    │  │
+│   │  src/db: entities/ (7 实体) + impls/ (7 Store)     │  │
+│   │         + types.rs + cache.rs (RedisManager)      │  │
 │   └───────────────────────────────────────────────────┘  │
+│                                                          │
+│   util/：SchedulerCache · CircuitBreaker · CacheAffinity │
+│            · SsrfChecker · ApiKeyCache                   │
 └──────────────────────────────────────────────────────────┘
                         │ HTTP 转发 (携带上游 API Key)
                         ▼
@@ -61,27 +62,26 @@
               free_models_server /admin/*
 ```
 
-## 三层 crate 架构
+## 数据访问层
 
-`free_models_server` 内部通过三个 crate 实现数据访问层的解耦：
+数据访问层采用**单 crate 模块化**设计，所有数据库访问代码都位于 `free_models_server/src/db/`，不存在独立的接口 crate / 实现 crate 划分：
 
 ```
-free_models_server (二进制 crate)
-    ├── depends on ── free_models_store_api (接口 crate)
-    │                   ├── StoreError            — 统一错误类型
-    │                   ├── CacheStore trait      — 缓存操作接口
-    │                   ├── models/               — 7 个 DTO
-    │                   └── stores/               — 7 个 Store trait + Database 聚合体
-    │
-    └── depends on ── free_models_store (实现 crate)
-                        ├── cache.rs              — RedisManager（实现 CacheStore）
-                        ├── entities/             — 7 个 SeaORM 实体
-                        └── stores/               — 7 个 Store 实现
+src/db/
+    ├── mod.rs        — StoreError 统一错误类型、Database 聚合结构体、init_db / build_database
+    ├── types.rs      — 跨模块共享的 DTO（UsageLogInsert、UsageLogStatItem 等）
+    ├── entities/     — 7 个 SeaORM 实体（映射数据库表）
+    └── impls/        — 7 个 Store 结构体实现（业务代码直接调用具体 Store）
 ```
 
-- **free_models_store_api**：纯接口 crate，仅依赖 `async-trait`、`serde`、`chrono`，无运行时依赖
-- **free_models_store**：实现 crate，基于 SeaORM (MySQL) + Redis，业务层通过 trait 调用，不直接依赖数据库实现细节
-- **free_models_server**：二进制 crate，业务层通过 `Arc<dyn StoreTrait>` 调用存储操作
+- **entities/**：7 个 SeaORM 实体 —— `admin_key`、`api_key`、`model_config`、`provider_config`、`provider_credential`、`provider_model_map`、`usage_log`
+- **impls/**：7 个对应 Store 实现 —— `AdminKeyStoreSeaorm`、`ApiKeyStoreSeaorm`、`ModelConfigStoreSeaorm`、`ProviderConfigStoreSeaorm`、`ProviderCredentialStoreSeaorm`、`ProviderModelMapStoreSeaorm`、`UsageLogStoreSeaorm`
+- **types.rs**：跨模块共享的 DTO，如 `UsageLogInsert`、`UsageLogStatItem`、`UsageLogStatsResponse`
+- 业务代码（handler / service / util）直接实例化并调用具体的 Store 结构体，**不使用** `Arc<dyn StoreTrait>` 动态分发，也没有 trait 接口层
+- Redis 操作由独立的 [cache.rs](file:///d:/workspace/trae/free_models_token/free_models_server/src/cache.rs)（`RedisManager`）负责，Redis 不可用时透明降级
+- `Database` 聚合结构体在 `build_database()` 中统一构建，包含 7 个 Store，均基于同一个 SeaORM `DatabaseConnection`
+
+**模型可用性三重校验**：一个模型被视为可用，必须同时满足 `model_config.is_active = true`、存在对应的 `provider_model_map` 映射、且该映射对应的 provider 下存在 `provider_credential.is_active = true` 的活跃凭证。`schedule_all_available` 与 `get_all_model_names` 均按此规则筛选。
 
 ## 目录结构
 
@@ -91,73 +91,79 @@ free_models_token/
 ├── docx/                              # 详细技术文档
 │
 ├── free_models_server/                # 后端代理服务 (Rust)
-│   ├── Cargo.toml                     # 主 crate 依赖
+│   ├── Cargo.toml                     # 单 crate 依赖
 │   ├── Dockerfile
 │   ├── .env.example
-│   │
-│   ├── free_models_store_api/         # 数据访问抽象接口
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs                 # StoreError, CacheStore trait, 导出
-│   │       ├── models/                # 7 个 DTO
-│   │       └── stores/                # 7 个 Store trait + Database 结构体
-│   │
-│   ├── free_models_store/             # 数据访问实现
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs                 # 导出 cache, entities, stores；init_db()
-│   │       ├── cache.rs               # RedisManager（实现 CacheStore）
-│   │       ├── entities/              # 7 个 SeaORM 实体
-│   │       └── stores/                # 7 个 Store 实现 + build_database()
-│   │
-│   ├── migrations/
+│   ├── migrations/                    # 手动 SQL 迁移（按序号顺序执行 001-006）
 │   │   ├── 001_init.sql               # provider_config, model_config, api_key
 │   │   ├── 002_add_model_config_columns.sql
 │   │   ├── 003_add_admin_key_and_usage.sql
 │   │   ├── 004_create_usage_log_daily.sql
-│   │   └── 005_create_provider_model_map.sql
+│   │   ├── 005_create_provider_model_map.sql
+│   │   └── 006_add_credential_status_fields.sql
 │   │
 │   └── src/
-│       ├── main.rs                    # 入口、路由注册
+│       ├── main.rs                    # 入口、路由注册、启动流程
 │       ├── app.rs                     # AppState 定义 + HTTP Client 构建
+│       ├── cache.rs                   # RedisManager（可选 Redis，透明降级）
 │       ├── config.rs                  # Config 结构体（环境变量读取）
-│       ├── response.rs                # 统一错误响应（OpenAI + Anthropic 格式）
+│       ├── response.rs                # 统一错误响应（OpenAI + Anthropic + Responses 格式）
 │       ├── task.rs                    # 优雅关闭 + 每日归档定时任务
 │       │
-│       ├── db/
-│       │   └── mod.rs                 # 构建 Database（委托到 free_models_store）
+│       ├── db/                        # 数据访问层（单 crate 模块化）
+│       │   ├── mod.rs                 # StoreError、Database、init_db、build_database
+│       │   ├── types.rs               # 跨模块共享 DTO
+│       │   ├── entities/              # 7 个 SeaORM 实体
+│       │   │   ├── admin_key.rs
+│       │   │   ├── api_key.rs
+│       │   │   ├── model_config.rs
+│       │   │   ├── provider_config.rs
+│       │   │   ├── provider_credential.rs
+│       │   │   ├── provider_model_map.rs
+│       │   │   └── usage_log.rs
+│       │   └── impls/                 # 7 个 Store 实现
+│       │       ├── admin_key.rs
+│       │       ├── api_key.rs
+│       │       ├── model_config.rs
+│       │       ├── provider_config.rs
+│       │       ├── provider_credential.rs
+│       │       ├── provider_model_map.rs
+│       │       └── usage_log.rs
 │       │
 │       ├── handler/
 │       │   ├── mod.rs
-│       │   ├── chat_handler.rs        # 公共请求（模型查询→筛选→转发）
-│       │   └── admin_handler.rs       # Admin CRUD（委托到 service 层）
+│       │   ├── chat_handler.rs        # 公共请求（鉴权解析→协议校验→调度→转发）
+│       │   └── admin/                 # Admin 路由（/admin scope）
+│       │       ├── mod.rs             # admin_routes() 路由清单
+│       │       ├── api_key.rs
+│       │       ├── import_models.rs
+│       │       ├── model.rs
+│       │       ├── provider.rs
+│       │       ├── provider_credential.rs
+│       │       ├── provider_model_map.rs
+│       │       ├── stats.rs           # service/status、cache/refresh、usage_log/stats
+│       │       └── test_credential.rs
 │       │
 │       ├── middleware/
 │       │   ├── mod.rs
-│       │   ├── auth.rs                # Bearer Token 鉴权
-│       │   └── admin_auth.rs          # Ed25519 签名鉴权
+│       │   ├── auth.rs                # Bearer Token 鉴权（跳过 /health 与 /admin/*）
+│       │   └── admin_auth.rs          # Ed25519 签名鉴权（时间戳 + nonce + body hash）
 │       │
 │       ├── service/
 │       │   ├── mod.rs
-│       │   ├── provider_service.rs            # 供应商 CRUD
-│       │   ├── model_service_ext.rs           # 模型 CRUD + 统计
-│       │   ├── model_service.rs               # 模型查询 + 缓存 + 优先级排序
-│       │   ├── api_key_service.rs             # API Key CRUD + 自动生成
-│       │   ├── admin_key_service.rs           # SSH 公钥管理 + fingerprint 自动填充
-│       │   ├── provider_credential_service.rs # 凭证 CRUD + AES 加解密
-│       │   ├── provider_model_map_service.rs  # 供应商模型映射管理
-│       │   ├── proxy_service.rs              # 上游转发 + 故障切换 + SSE + 用量日志
-│       │   └── usage_log_service.rs          # 用量持久化
+│       │   ├── provider_credential_service.rs # 凭证创建/更新时的 AES-256-GCM 加解密
+│       │   └── proxy_service.rs       # 上游转发 + 故障切换 + SSE 扫描 + 用量日志
 │       │
 │       └── util/
 │           ├── mod.rs
-│           ├── api_key_cache.rs       # Redis Set + 内存 fallback
-│           ├── cache_affinity.rs      # 模型-供应商缓存亲和性
-│           ├── encryption.rs          # AES-256-GCM 加密/解密
+│           ├── api_key_cache.rs       # API Key 缓存（Redis Set + moka fallback）
+│           ├── cache_affinity.rs      # 模型-供应商缓存亲和性（moka）
+│           ├── encryption.rs          # AES-256-GCM 加密/解密 + parse_key
 │           ├── model_scheduler.rs     # 模型调度缓存（SchedulerCache）
-│           ├── penalty.rs             # 优先级惩罚机制（熔断器）
-│           ├── proxy_ssrf.rs          # SSRF 防护
-│           ├── proxy_types.rs         # 代理转发类型定义
+│           ├── penalty.rs             # 熔断器（CircuitBreaker，纯内存 moka）
+│           ├── proxy_ssrf.rs          # SSRF 防护（SsrfChecker，moka 缓存）
+│           ├── proxy_types.rs         # 代理转发类型（Protocol、ForwardMeta 等）
+│           ├── stream_usage_scanner.rs # SSE 流扫描（usage/error 提取）
 │           ├── tokenizer.rs           # cl100k_base BPE token 估算
 │           └── usage_log_collector.rs # 异步用量日志收集器
 │
@@ -171,7 +177,18 @@ free_models_token/
     │   │   ├── Drawer.tsx/less
     │   │   ├── Sidebar.tsx/less
     │   │   ├── Toggle.tsx/less
-    │   │   └── Toolbar.tsx/less
+    │   │   ├── Toolbar.tsx/less
+    │   │   └── doodle/                # 手绘风 UI 组件库
+    │   │       ├── index.ts
+    │   │       ├── DoodleButton.tsx/less
+    │   │       ├── DoodleCheckbox.tsx/less
+    │   │       ├── DoodleCheckboxGroup.tsx/less
+    │   │       ├── DoodleEmpty.tsx/less
+    │   │       ├── DoodleInput.tsx/less
+    │   │       ├── DoodleMessage.tsx/less
+    │   │       ├── DoodleModal.tsx/less
+    │   │       ├── DoodleSelect.tsx/less
+    │   │       └── DoodleTag.tsx/less
     │   ├── pages/
     │   │   ├── Overview.tsx/less      # 概览仪表盘
     │   │   ├── Stats.tsx/less         # 使用统计
@@ -179,9 +196,11 @@ free_models_token/
     │   │   ├── Models.tsx/less        # 模型管理
     │   │   ├── ApiKeys.tsx/less       # API Key 管理
     │   │   └── Settings.tsx/less      # 设置页
-    │   └── styles/                    # 全局样式
-    │       ├── global.less
-    │       └── variables.less
+    │   ├── styles/                    # 全局样式
+    │   │   ├── global.less
+    │   │   ├── variables.less
+    │   │   └── cjk-fonts.less
+    │   └── assets/fonts/              # 内置中文字体
     └── src-tauri/
         └── src/
             ├── main.rs                # Tauri 入口 + 所有 Tauri 命令
@@ -196,13 +215,16 @@ free_models_token/
 | 组件 | 技术 | 用途 |
 |------|------|------|
 | HTTP 框架 | actix-web 4 | REST API 服务 |
-| ORM | sea-orm 2 (MySQL) | 数据库访问 |
-| HTTP 客户端 | reqwest 0.12 | 上游请求转发 |
-| 缓存 | Redis + 内存 fallback | 多级缓存 |
-| Token 计数 | tiktoken-rs 0.12 | cl100k_base BPE |
-| 加密 | aes-gcm 0.10 | 凭证 AES-256-GCM 加密 |
-| 签名 | ed25519-dalek 3 | Admin API 签名鉴权 |
-| 数据访问层 | free_models_store_api + free_models_store | 接口-实现分离架构 |
+| ORM | sea-orm 2 (MySQL) | 数据库访问（SeaORM 实体 + impls Store） |
+| HTTP 客户端 | reqwest 0.12 | 上游请求转发（统一 `User-Agent: FreeModelsServer/1.0`） |
+| 缓存 | Redis（可选）+ moka 内存 | 调度缓存、API Key 缓存、熔断、亲和、SSRF 校验 |
+| Token 计数 | tiktoken-rs | cl100k_base BPE |
+| 加密 | aes-gcm | 凭证 AES-256-GCM 加密 |
+| 签名 | ed25519-dalek | Admin API 签名鉴权 |
+| 数据访问层 | src/db 单 crate（entities + impls + types + cache） | SeaORM 2 实体与 Store 实现 |
+| 熔断器 | 纯内存 moka | 失败计数 → Open → HalfOpen 单探测 |
+| SSRF 防护 | 私网 IP 拦截 + DNS fail-closed | 拦截私网地址，带 moka 缓存（TTL 300s） |
+| 流式扫描 | SSE 解析器 | 流式响应中提取 usage 与内嵌错误 |
 
 ### 前端 (free_models_manager)
 
@@ -210,8 +232,8 @@ free_models_token/
 |------|------|------|
 | 桌面框架 | Tauri v2 | 跨平台桌面应用 |
 | UI 框架 | React 18 + TypeScript | 前端界面 |
-| 构建工具 | Vite | 前端构建 |
-| UI 组件 | Ant Design 5 | 组件库 |
+| 构建工具 | Vite 5 + LESS | 前端构建 |
+| UI 组件 | Ant Design 6 | 组件库 |
 | 签名 | Tauri Rust 后端 (ed25519-dalek) | Ed25519 签名生成 |
 
 ## 核心流程
@@ -219,85 +241,108 @@ free_models_token/
 ### 请求处理流程
 
 ```
-客户端请求 (POST /v1/chat/completions 或 /v1/messages)
+客户端请求 (POST /v1/chat/completions | /v1/messages | /v1/responses)
     │
-    ├─ AuthMiddleware: 提取 Bearer Token → 查 API Key 缓存
-    │   ├─ 无效 → 401
+    ├─ AuthMiddleware: 提取 Bearer Token → ApiKeyCache.contains() 查询
+    │   ├─ 无效 → 401（Anthropic 协议返回 anthropic 格式）
     │   └─ 有效 → 继续
     │
-    ├─ chat_handler::chat_completions / anthropic_messages
-    │   ├─ 解析模型名
-    │   └─ 校验 messages 字段
+    ├─ dispatch_chat: 解析 API Key（DB 查询 id/name）→ handle_chat_request
     │
-    ├─ model_service::get_all_available_models_by_priority
-    │   ├─ 查 ModelCache → 未命中 → 查库
-    │   ├─ 过滤 status='available'
-    │   ├─ 过滤有活跃凭证的供应商
-    │   └─ 按 priority 升序排列
+    ├─ validate_request_body
+    │   ├─ Responses 协议 → 校验 input 字段
+    │   └─ 其他协议 → 校验 messages 字段
     │
-    ├─ 按协议筛选（openai / anthropic）
-    ├─ 用户指定模型时，指定模型排到最前
-    ├─ CircuitBreaker::sort_penalized_last
-    │   └─ 被惩罚的模型排到最后
+    ├─ schedule_all_available(database, encryption_key, scheduler_cache)
+    │   ├─ 查 SchedulerCache（Redis app:free_models:scheduler:all + moka，TTL 30s）
+    │   ├─ 未命中 → 批量查库（活跃 model_config / map / provider / credential）
+    │   └─ 构造 Vec<ModelScheduleInfo>（模型→映射→凭证 三级结构）并写回缓存
     │
-    ├─ 估算 prompt token → 过滤 context_window 不足的模型
+    ├─ supports_protocol: 过滤不支持当前协议的模型（空则 503）
+    ├─ merge_preferred_first: 请求指定 model 排到最前
+    ├─ tokenizer::estimate_prompt_tokens: 估算 prompt tokens
+    ├─ filter_by_context_window: 过滤上下文窗口不足的模型（空则 400）
     │
-    └─ proxy_service::proxy_chat_completion
-        └─ 遍历模型列表
-            ├─ forward_to_provider: 构建 URL、设置 Header、发送请求
-            ├─ 成功 → 返回上游响应（流式/非流式），记录用量日志
-            ├─ 失败 → CircuitBreaker::penalize → 继续下一个
-            └─ 全部失败 → 503
+    └─ proxy_chat_completion_inner（三重循环 model → map → credential）
+        ├─ reorder_by_affinity: 按 CacheAffinity 亲和记录重排 provider/credential
+        ├─ 跳过 quota_exhausted 凭证
+        ├─ circuit_breaker.is_allowed 熔断检查（Closed / Open / HalfOpen）
+        ├─ forward_to_provider
+        │   ├─ SSRF validate_url_safe（拦截私网 IP，DNS 解析失败 fail-closed）
+        │   ├─ join_url + 改写 model + stream / stream_options
+        │   └─ 协议差异化鉴权头（OpenAI/Responses: Bearer；Anthropic: x-api-key）
+        ├─ ForwardOutcome 四态: Success / Retry(Option<u64>) / Fail / CredentialFail
+        ├─ Retry → 按 retry_delay（Retry-After 封顶 15s，否则 500-900ms）睡后重试一次
+        │   └─ 重试后仍 Retry/Fail → record_failure；重试后 CredentialFail → record_credential_fail
+        ├─ CredentialFail → record_credential_fail（熔断 + 持久化 quota_exhausted）
+        ├─ Success → handle_success（流式: SSE 扫描 usage/error；非流式: 解析 usage）
+        ├─ Fail → 立即返回 400（Upstream provider error）
+        └─ 全部尝试失败 → 503（汇总 error_details）
 ```
 
 ### 启动流程
 
 ```
-1. 加载 .env 环境变量（dotenv）
-2. 初始化 env_logger
-3. 读取 Config（server_host, server_port, encryption_key 等）
-4. 初始化数据库：db::build_database()
-   └─ 委托到 free_models_store::build_database()
-       └─ 创建 7 个 Store 实现 + Database 聚合结构体
-5. 初始化 Redis：free_models_store::cache::RedisManager::init()
-   └─ 失败时使用 disabled() 空实现，服务正常启动
-6. 构建 HTTP 客户端（连接池 20、空闲超时 90s、TCP keepalive 30s）
-7. 加载 API Key 全量缓存（Redis Set + 内存 HashSet）
-8. 创建 CircuitBreaker（优先级惩罚机制）
-9. 创建 SchedulerCache（模型调度缓存）
-10. 构造 AppState 注入 Actix Web
-11. 初始化 UsageLogCollector（异步用量日志收集器）
-12. 归档昨天的用量日志（archive_yesterday）
-13. 注册路由，启动 HTTP 服务
-14. spawn 后台任务：
-    ├─ task::graceful_shutdown — 监听 SIGTERM/Ctrl-C，优雅关闭
-    └─ task::spawn_daily_archive — 每日凌晨归档前一天用量日志
+1. dotenv::dotenv() 加载 .env
+2. env_logger::init() 初始化日志
+3. Config::from_env() 读取环境变量
+4. db::build_database()
+   └─ init_db() 创建 SeaORM 连接（DB_MAX_CONNECTIONS）→ 构建 7 个 Store + Database 聚合
+5. 克隆 usage_logs Store 供日志收集器与归档使用
+6. cache::RedisManager::init()
+   └─ REDIS_ENABLED=false 或连接失败 → client=None，透明降级到内存
+7. ApiKeyCache::load_all() 全量加载活跃 API Key（moka + 同步 Redis Set）
+8. app::build_client() 构建 HTTP 客户端
+   └─ 连接池 20、空闲超时 90s、TCP keepalive 30s、User-Agent: FreeModelsServer/1.0
+9. CircuitBreaker::new(open_ttl, threshold, max_capacity)
+10. CacheAffinity::new(max_capacity, ttl)
+11. SsrfChecker::new(max_capacity, ttl=300s)
+12. 构造 AppState 注入 Actix Web（PayloadConfig 10MB）
+13. init_usage_log_collector() 初始化异步用量日志收集器
+14. usage_log_store.archive_yesterday() 归档昨天的用量日志
+15. 注册路由并启动 HTTP 服务
+    ├─ wrap(AuthMiddleware) + Logger
+    ├─ /health、/v1/models、/v1/chat/completions、/v1/messages、/v1/responses
+    └─ /admin scope（AdminAuthMiddleware 包裹）
+16. spawn 后台任务：
+    ├─ task::graceful_shutdown — SIGTERM/Ctrl-C → 优雅关闭（30s 超时）+ 刷新日志收集器
+    └─ task::spawn_daily_archive — 每日 00:05 UTC 归档前一天用量日志（指数退避重试）
 ```
 
 ## 全局状态 (AppState)
 
 ```rust
 pub struct AppState {
-    pub database: Database,                     // 7 个 Store trait 的聚合体（Arc<dyn ...>）
-    pub scheduler_cache: SchedulerCache,        // 模型调度缓存（Redis + 内存）
-    pub client: Client,                         // reqwest HTTP 客户端
-    pub priority_penalty: web::Data<CircuitBreaker>,  // 熔断器（失败计数 + 惩罚 TTL）
-    pub api_key_cache: ApiKeyCache,             // API Key 全量缓存
-    pub cache_affinity: CacheAffinity,          // 模型-供应商缓存亲和性
-    pub encryption_key: [u8; 32],               // AES-256-GCM 加密密钥
+    pub database: Database,                          // 7 个 Store 的聚合体
+    pub scheduler_cache: SchedulerCache,             // 模型调度缓存（Redis + moka）
+    pub client: Client,                              // reqwest HTTP 客户端
+    pub priority_penalty: web::Data<CircuitBreaker>, // 熔断器（纯内存 moka）
+    pub api_key_cache: ApiKeyCache,                  // API Key 全量缓存
+    pub cache_affinity: CacheAffinity,               // 模型-供应商缓存亲和性（moka）
+    pub ssrf_checker: SsrfChecker,                   // SSRF 校验（moka 缓存）
+    pub encryption_key: [u8; 32],                    // AES-256-GCM 加密密钥
 }
 ```
 
-其中 `Database` 结构体（定义在 free_models_store_api）聚合了 7 个 Store trait：
+其中 `Database` 结构体（定义在 [db/mod.rs](file:///d:/workspace/trae/free_models_token/free_models_server/src/db/mod.rs)）聚合了 7 个具体 Store：
 
 ```rust
 pub struct Database {
-    pub providers: Arc<dyn ProviderConfigStore>,
-    pub models: Arc<dyn ModelConfigStore>,
-    pub credentials: Arc<dyn ProviderCredentialStore>,
-    pub model_maps: Arc<dyn ProviderModelMapStore>,
-    pub api_keys: Arc<dyn ApiKeyStore>,
-    pub admin_keys: Arc<dyn AdminKeyStore>,
-    pub usage_logs: Arc<dyn UsageLogStore>,
+    pub provider_configs: ProviderConfigStoreSeaorm,
+    pub model_configs: ModelConfigStoreSeaorm,
+    pub provider_credentials: ProviderCredentialStoreSeaorm,
+    pub provider_model_maps: ProviderModelMapStoreSeaorm,
+    pub api_keys: ApiKeyStoreSeaorm,
+    pub admin_keys: AdminKeyStoreSeaorm,
+    pub usage_logs: UsageLogStoreSeaorm,
 }
 ```
+
+## Admin API 鉴权
+
+`/admin/*` 路由统一包裹 `AdminAuthMiddleware`，基于 Ed25519 签名：
+
+- 请求头：`X-Admin-Fingerprint`、`X-Admin-Timestamp`、`X-Admin-Signature`（可选 `X-Admin-Nonce` 防重放、`X-Admin-Body-Hash` 保护请求体）
+- 签名内容：`METHOD:PATH:TIMESTAMP:NONCE:BODY_HASH`（nonce 与 body hash 为空字符串时占位为空）
+- 时间戳允许 ±300 秒偏差，nonce 在 300 秒窗口内去重
+- 公钥以 OpenSSH 格式（`ssh-ed25519`）存储在 `admin_key` 表，fingerprint 用于快速定位记录

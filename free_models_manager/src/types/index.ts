@@ -17,6 +17,7 @@ export interface ProviderCredential {
   password: string | null;
   priority: number;
   is_active: boolean;
+  quota_exhausted: boolean;
   created_time: string;
   last_updated: string;
 }

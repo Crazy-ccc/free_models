@@ -57,7 +57,7 @@ free_models_token/
 
 ### free_models_manager（Tauri 桌面管理端）
 
-- 技术栈：Tauri v2 / React 18 / TypeScript / Ant Design 6 / LESS / Vite 5
+- 技术栈：Tauri v2 / React 18 / TypeScript / LESS / Vite 5（UI 为项目自研的 "Doodle" 手绘组件库，不依赖 Ant Design）
 - 管理后端服务的供应商（含凭证管理 + 测试 + 一键导入模型）、模型、API Key，并查看用量统计
 
 ## 核心能力
@@ -68,6 +68,8 @@ free_models_token/
 - **Token 计数** — `tiktoken-rs` cl100k_base BPE，请求前估算 prompt token 做上下文窗口校验
 - **用量日志** — 每次请求记录完整用量到 `usage_log` 表（含 cache hit/miss tokens），支持每日自动归档
 - **凭证管理** — 一个供应商支持多组凭证（api_key / account / password），AES-256-GCM 加密存储
+- **配额持久化** — 上游配额耗尽自动标记凭证为 `quota_exhausted` 并跳过该凭证，支持在管理端手动重置状态
+- **响应透明化** — 透传上游响应头，不伪造 SSE 结束帧，保持与上游协议一致
 - **Admin 接口** — Ed25519 签名鉴权，按职责拆分为多个子模块的完整 CRUD
 - **SSRF 防护** — 上游 URL 校验拦截私网 IP，DNS 解析失败时 fail-closed
 
@@ -86,6 +88,7 @@ mysql -u root -p free_models < migrations/002_add_model_config_columns.sql
 mysql -u root -p free_models < migrations/003_add_admin_key_and_usage.sql
 mysql -u root -p free_models < migrations/004_create_usage_log_daily.sql
 mysql -u root -p free_models < migrations/005_create_provider_model_map.sql
+mysql -u root -p free_models < migrations/006_add_credential_status_fields.sql
 
 cargo run --release
 ```
@@ -136,6 +139,7 @@ curl -X POST http://localhost:8080/v1/messages \
 | [认证鉴权](docx/authentication.md) | API Key Bearer + Ed25519 签名鉴权流程 |
 | [缓存策略](docx/caching_strategy.md) | Redis + 内存多级缓存、TTL、刷新机制 |
 | [代理转发与 Token 计算](docx/proxy_and_token.md) | 故障切换、流式转发、tiktoken |
+| [模型代理全链路梳理](docx/model_proxy_chain.md) | 模型配置到上游调用的完整链路梳理 |
 | [管理员界面](docx/admin_ui.md) | 页面功能、组件说明、签名流程 |
 | [Server 快速启动](free_models_server/README.md) | 环境变量、配置详解、目录结构 |
 | [Server 部署](free_models_server/DEPLOYMENT.md) | 交叉编译与远程 Docker 部署 |

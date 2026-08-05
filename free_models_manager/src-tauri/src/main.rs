@@ -234,6 +234,16 @@ async fn delete_provider_credential(state: tauri::State<'_, AppState>, server_ur
 }
 
 #[tauri::command]
+async fn reset_provider_credential_status(state: tauri::State<'_, AppState>, server_url: String, id: i32) -> Result<Value, String> {
+    let keypair = {
+        let kp = state.keypair.lock().map_err(|e| e.to_string())?;
+        kp.clone().ok_or_else(|| "Keypair not loaded. Please configure key paths in Settings.".to_string())?
+    };
+    let client = AdminClient::new(server_url, keypair);
+    client.reset_provider_credential_status(id).await
+}
+
+#[tauri::command]
 async fn test_provider_credential(state: tauri::State<'_, AppState>, server_url: String, credential_id: i32, model_id: String, prompt: Option<String>) -> Result<Value, String> {
     let keypair = {
         let kp = state.keypair.lock().map_err(|e| e.to_string())?;
@@ -363,6 +373,7 @@ fn main() {
             get_provider_credential,
             update_provider_credential,
             delete_provider_credential,
+            reset_provider_credential_status,
             test_provider_credential,
             get_keypair_fingerprint,
             load_keypair,

@@ -78,6 +78,7 @@ pub fn admin_routes() -> actix_web::Scope {
         .route("/provider_credentials/{id}", web::get().to(provider_credential::get_provider_credential))
         .route("/provider_credentials/{id}", web::put().to(provider_credential::update_provider_credential))
         .route("/provider_credentials/{id}", web::delete().to(provider_credential::delete_provider_credential))
+        .route("/provider_credentials/{id}/reset_status", web::post().to(provider_credential::reset_provider_credential_status))
         .route("/test_credential", web::post().to(test_credential::test_credential))
         .route("/usage_log/stats", web::get().to(stats::usage_log_stats))
 }

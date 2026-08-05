@@ -49,6 +49,15 @@ impl CircuitBreaker {
         format!("{}|{}|{}", model_name, provider_name, credential_id)
     }
 
+    /// 解析熔断 key（`model|provider|credential_id`），格式非法或 credential_id 非整数时返回 None。
+    fn parse_key(key: &str) -> Option<(&str, &str, i32)> {
+        let mut parts = key.splitn(3, '|');
+        let model_name = parts.next()?;
+        let provider_name = parts.next()?;
+        let credential_id = parts.next()?.parse::<i32>().ok()?;
+        Some((model_name, provider_name, credential_id))
+    }
+
     pub fn record_failure(&self, model_name: &str, provider_name: &str, credential_id: i32) {
         let key = Self::key(model_name, provider_name, credential_id);
         // 注意：moka 的 get-then-insert 非原子，并发调用可能丢失自增（failure_count 少计）。
@@ -111,6 +120,16 @@ impl CircuitBreaker {
         }
     }
 
+    pub fn reset_credential(&self, credential_id: i32) {
+        for (key, _) in self.entries.iter() {
+            if let Some((_, _, id)) = Self::parse_key(&key)
+                && id == credential_id
+            {
+                self.entries.remove(&**key);
+            }
+        }
+    }
+
     pub fn list_blocked_models(&self) -> Vec<(String, String, i32, u64)> {
         let now = Instant::now();
         let mut result = Vec::new();
@@ -119,12 +138,8 @@ impl CircuitBreaker {
             if let Some(expiry) = entry.fallback {
                 if expiry > now {
                     let remaining = expiry.duration_since(now).as_secs();
-                    let parts: Vec<&str> = key.splitn(3, '|').collect();
-                    if parts.len() == 3 {
-                        let model_name = parts[0].to_string();
-                        let provider_name = parts[1].to_string();
-                        let credential_id = parts[2].parse().unwrap_or(0);
-                        result.push((model_name, provider_name, credential_id, remaining));
+                    if let Some((model_name, provider_name, credential_id)) = Self::parse_key(&key) {
+                        result.push((model_name.to_string(), provider_name.to_string(), credential_id, remaining));
                     }
                 }
             }
