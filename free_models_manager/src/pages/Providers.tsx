@@ -101,9 +101,9 @@ function CredentialsPage({
     setEditingCred(cred);
     setForm({
       name: cred.name,
-      api_key: cred.api_key,
+      api_key: '',
       account: cred.account ?? '',
-      password: cred.password ?? '',
+      password: '',
       priority: cred.priority,
       is_active: cred.is_active,
     });
@@ -117,18 +117,26 @@ function CredentialsPage({
 
   const handleSave = async () => {
     try {
-      const payload = {
-        provider_id: providerId,
-        name: form.name || undefined,
-        api_key: form.api_key,
-        account: form.account || null,
-        password: form.password || null,
-        priority: form.priority,
-        is_active: form.is_active,
-      };
       if (editingCred) {
+        const payload: Record<string, unknown> = {
+          name: form.name || undefined,
+          account: form.account || null,
+          priority: form.priority,
+          is_active: form.is_active,
+        };
+        if (form.api_key) payload.api_key = form.api_key;
+        if (form.password) payload.password = form.password;
         await invoke('update_provider_credential', { serverUrl, id: editingCred.id, data: payload });
       } else {
+        const payload = {
+          provider_id: providerId,
+          name: form.name || undefined,
+          api_key: form.api_key,
+          account: form.account || null,
+          password: form.password || null,
+          priority: form.priority,
+          is_active: form.is_active,
+        };
         await invoke('create_provider_credential', { serverUrl, data: payload });
       }
       closeDrawer();
@@ -165,12 +173,6 @@ function CredentialsPage({
         serverUrl,
         id: cred.id,
         data: {
-          provider_id: cred.provider_id,
-          name: cred.name || undefined,
-          api_key: cred.api_key,
-          account: cred.account || null,
-          password: cred.password || null,
-          priority: cred.priority,
           is_active: newActive,
         },
       });
@@ -315,7 +317,7 @@ function CredentialsPage({
         </div>
         <div className="form-field">
           <label>API Key</label>
-          <DoodleInput value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} />
+          <DoodleInput value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder={editingCred ? '留空则不修改' : ''} />
         </div>
         <div className="form-field">
           <label>账号（可选）</label>
@@ -323,7 +325,7 @@ function CredentialsPage({
         </div>
         <div className="form-field">
           <label>密码（可选）</label>
-          <DoodleInput type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <DoodleInput type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={editingCred ? '留空则不修改' : ''} />
         </div>
         <div className="form-row">
           <div className="form-field">
