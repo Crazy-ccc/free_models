@@ -58,9 +58,28 @@ curl http://localhost:8080/health
 ## Docker
 
 ```bash
+# 构建
 docker build -t free_models_server .
-docker run --rm -p 8080:8080 --env-file .env free_models_server
+
+# 运行（使用容器专用环境变量文件 .env.docker，挂载卷持久化数据）
+docker run -d \
+  --name free_models_server \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -v free_models_data:/data \
+  --env-file .env.docker \
+  free_models_server
 ```
+
+`.env.docker` 是容器部署专用配置（本地开发继续用 `.env`），主要区别：
+
+- `DATABASE_URL` 指向挂载卷内的 `/data/free_models.db`（自动创建 + 启动幂等建表）
+- `SERVER_HOST=0.0.0.0`（容器内监听全网段）
+- `DB_MAX_CONNECTIONS=10`（容器内存受限，建议调低）
+- 值不含引号（Docker `--env-file` 要求）
+- 含 `ENCRYPTION_KEY`，已在 `.gitignore` 中排除，不入库
+
+**entrypoint 机制**：镜像内以 root 启动 entrypoint.sh，自动 `chown` 修正数据卷属主，然后经 `su-exec` 降权为 nobody 执行主程序——无论挂载方式如何（named volume / bind mount / 单文件）均能正确获得写权限。
 
 ---
 
@@ -97,8 +116,10 @@ curl -X POST http://localhost:8080/v1/responses \
 ```
 free_models_server/
 ├── Cargo.toml
-├── Dockerfile
+├── Dockerfile               # 多阶段构建（builder + runtime + entrypoint 自愈权限）
+├── entrypoint.sh            # 容器入口脚本（root → chown → su-exec → nobody）
 ├── .env.example
+├── .env.docker              # 容器部署专用环境变量（不含引号、指向 /data 卷）
 ├── migrations/
 │   └── 001_sqlite_schema.sql           # SQLite 全量建表（7 张业务表 + usage_log_daily 日汇总表）
 └── src/
