@@ -24,14 +24,17 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 FROM alpine:3.24.1
 
-RUN apk add --no-cache ca-certificates tzdata \
+RUN apk add --no-cache ca-certificates tzdata su-exec \
     && mkdir -p /data \
     && chown nobody:nobody /data
 
 COPY --from=builder --chown=nobody:nobody \
     /tmp/free_models_server /usr/local/bin/free_models_server
 
-USER nobody
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 EXPOSE 8080
 
