@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 actix-web = "4"
-sea-orm = { version = "2", features = ["sqlx-mysql", "runtime-tokio-rustls", "macros"] }
+sea-orm = { version = "2", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "gzip", "brotli", "deflate", "zstd"] }
@@ -17,9 +17,12 @@ env_logger = "0.11"
 tokio = { version = "1", features = ["signal", "macros"] }
 ed25519-dalek = "3"
 base64 = "0.23"
-redis = { version = "1", features = ["tokio-comp", "connection-manager"] }
 rand = "0.10"
 tiktoken-rs = "0.12.0"
 aes-gcm = "0.10"
 hex = "0.4"
 moka = { version = "0.12", features = ["future", "sync"] }
+
+[[bin]]
+name = "free_models_server"
+path = "src/main.rs"

@@ -1,5 +1,4 @@
 mod app;
-mod cache;
 mod config;
 mod db;
 mod handler;
@@ -9,7 +8,6 @@ mod service;
 mod task;
 mod util;
 
-use std::sync::Arc;
 
 use actix_web::{web, App, HttpServer, middleware as actix_middleware};
 use log::info;
@@ -40,8 +38,7 @@ async fn main() -> std::io::Result<()> {
         config.server_host, config.server_port
     );
 
-    let cache_store: Arc<cache::RedisManager> = Arc::new(cache::RedisManager::init().await);
-    let api_key_cache = ApiKeyCache::load_all(&database.api_keys, cache_store.clone(), config.api_key_cache_max_capacity).await;
+    let api_key_cache = ApiKeyCache::load_all(&database.api_keys, config.api_key_cache_max_capacity).await;
     info!("API key cache loaded");
 
     let client = app::build_client();
@@ -61,7 +58,7 @@ async fn main() -> std::io::Result<()> {
     );
     let app_state = web::Data::new(AppState {
         database,
-        scheduler_cache: SchedulerCache::new(cache_store, config.redis_cache_ttl_model),
+        scheduler_cache: SchedulerCache::new(config.scheduler_cache_ttl),
         client,
         priority_penalty: priority_penalty.clone(),
         api_key_cache,

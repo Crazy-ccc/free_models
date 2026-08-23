@@ -22,6 +22,15 @@ function maskApiKey(key: string): string {
   return `${key.slice(0, 3)}****${key.slice(-4)}`;
 }
 
+interface UpdateCredentialPayload {
+  name?: string | null;
+  account?: string | null;
+  priority: number;
+  is_active: boolean;
+  api_key?: string;
+  password?: string;
+}
+
 /* ───── 凭证管理子页面 ───── */
 
 function CredentialsPage({
@@ -118,8 +127,8 @@ function CredentialsPage({
   const handleSave = async () => {
     try {
       if (editingCred) {
-        const payload: Record<string, unknown> = {
-          name: form.name || undefined,
+        const payload: UpdateCredentialPayload = {
+          name: form.name || null,
           account: form.account || null,
           priority: form.priority,
           is_active: form.is_active,
@@ -128,6 +137,10 @@ function CredentialsPage({
         if (form.password) payload.password = form.password;
         await invoke('update_provider_credential', { serverUrl, id: editingCred.id, data: payload });
       } else {
+        if (!form.api_key.trim()) {
+          DoodleMessage.error('API Key 不能为空');
+          return;
+        }
         const payload = {
           provider_id: providerId,
           name: form.name || undefined,
@@ -570,7 +583,7 @@ function Providers() {
     }
     setCreateModelLoading(true);
     try {
-      const created = await invoke<any>('create_model', { serverUrl, data: { name: createModelName, context_length: createModelContextLength } });
+      const created = await invoke<any>('create_model', { serverUrl, data: { name: createModelName, priority: 0, timeout: 300, context_length: createModelContextLength, is_active: true } });
       setCreateModelOpen(false);
       // New global model appears in Select options (models state), not in proxyModels.
       setModels((prev) => (prev.some((m) => m.name === created.name) ? prev : [...prev, created]));

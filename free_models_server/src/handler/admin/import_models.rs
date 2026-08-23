@@ -49,7 +49,7 @@ async fn import_one(
                 priority: 9,
                 protocols: item.protocols.clone().unwrap_or_else(|| "openai".to_string()),
                 status: "available".to_string(),
-                timeout: Some(30),
+                timeout: Some(300),
                 context_length: item.context_length.or(Some(256000)),
             };
             if let Err(e) = state.database.provider_model_maps.create(&input).await {

@@ -4,7 +4,7 @@ use std::time::Duration;
 pub struct Config {
     pub server_host: String,
     pub server_port: u16,
-    pub redis_cache_ttl_model: Duration,
+    pub scheduler_cache_ttl: Duration,
     pub circuit_breaker_threshold: u32,
     pub circuit_breaker_open_ttl: Duration,
     pub encryption_key: [u8; 32],
@@ -24,8 +24,8 @@ impl Config {
                 .unwrap_or_else(|_| "8080".to_string())
                 .parse()
                 .expect("SERVER_PORT must be a valid u16"),
-            redis_cache_ttl_model: Duration::from_secs(
-                env::var("REDIS_CACHE_TTL_MODEL_SEC")
+            scheduler_cache_ttl: Duration::from_secs(
+                env::var("SCHEDULER_CACHE_TTL_SEC")
                     .ok()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(30),

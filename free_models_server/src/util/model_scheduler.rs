@@ -1,8 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::time::Duration;
 
-use crate::cache::RedisManager;
 use crate::db::Database;
 use crate::db::entities::model_config::Model as ModelConfig;
 use crate::db::entities::provider_credential::Model as ProviderCredential;
@@ -54,19 +52,15 @@ impl ModelProviderMap {
     }
 }
 
-/// SchedulerCache: Redis + local secondary cache for ModelScheduleInfo
+/// SchedulerCache: in-memory cache for ModelScheduleInfo
 pub struct SchedulerCache {
-    cache_store: Arc<RedisManager>,
     fallback: moka::future::Cache<String, Vec<ModelScheduleInfo>>,
-    ttl: Duration,
 }
 
 impl SchedulerCache {
-    pub fn new(cache_store: Arc<RedisManager>, ttl: Duration) -> Self {
+    pub fn new(ttl: Duration) -> Self {
         SchedulerCache {
-            cache_store,
             fallback: moka::future::Cache::builder().time_to_live(ttl).build(),
-            ttl,
         }
     }
 
@@ -79,29 +73,14 @@ impl SchedulerCache {
     }
 
     pub async fn clear(&self) {
-        let _ = self.cache_store.del("app:free_models:scheduler:all").await;
         self.fallback.invalidate_all();
     }
 
     async fn get(&self, key: &str) -> Option<Vec<ModelScheduleInfo>> {
-        let full_key = format!("app:free_models:scheduler:{}", key);
-        if self.cache_store.is_available() {
-            if let Ok(Some(value)) = self.cache_store.get(&full_key).await {
-                if let Ok(models) = serde_json::from_str::<Vec<ModelScheduleInfo>>(&value) {
-                    return Some(models);
-                }
-            }
-        }
         self.fallback.get(key).await
     }
 
     async fn set(&self, key: String, models: Vec<ModelScheduleInfo>) {
-        if let Ok(value) = serde_json::to_string(&models) {
-            if self.cache_store.is_available() {
-                let full_key = format!("app:free_models:scheduler:{}", key);
-                let _ = self.cache_store.set_ex(&full_key, &value, self.ttl.as_secs()).await;
-            }
-        }
         self.fallback.insert(key, models).await;
     }
 }

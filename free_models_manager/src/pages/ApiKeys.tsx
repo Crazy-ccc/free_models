@@ -83,7 +83,6 @@ function ApiKeys() {
       if (editingKey) {
         const payload = {
           name: formName,
-          key_value: formKeyValue,
           is_active: formIsActive,
         };
         await invoke<ApiKey>('update_api_key', { serverUrl, id: editingKey.id, data: payload });

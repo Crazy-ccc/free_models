@@ -2,7 +2,7 @@
 
 模型代理后端服务。对外暴露 OpenAI（`/v1/chat/completions`）、Anthropic（`/v1/messages`）与 Responses（`/v1/responses`）三种协议接口，按优先级和可用性将请求自动切换到多个上游供应商。
 
-技术栈：Rust / actix-web 4 / Sea-ORM 2 (MySQL) / reqwest 0.12 / Redis / moka (内存缓存) / tiktoken-rs / ed25519-dalek / AES-256-GCM。内置 SSRF 防护（私网 IP 拦截 + DNS fail-closed）与 OpenAI / Anthropic / Responses 三协议支持。
+技术栈：Rust / actix-web 4 / Sea-ORM 2 (SQLite) / reqwest 0.12 / moka (进程内内存缓存) / tiktoken-rs / ed25519-dalek / AES-256-GCM。内置 SSRF 防护（私网 IP 拦截 + DNS fail-closed）与 OpenAI / Anthropic / Responses 三协议支持。
 
 ---
 
@@ -13,14 +13,12 @@
 cp .env.example .env
 # 编辑 .env，至少设置 DATABASE_URL 和 ENCRYPTION_KEY
 
-# 2. 创建数据库并执行迁移（按顺序执行）
-mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS free_models CHARACTER SET utf8mb4;"
-mysql -u root -p free_models < migrations/001_init.sql
-mysql -u root -p free_models < migrations/002_add_model_config_columns.sql
-mysql -u root -p free_models < migrations/003_add_admin_key_and_usage.sql
-mysql -u root -p free_models < migrations/004_create_usage_log_daily.sql
-mysql -u root -p free_models < migrations/005_create_provider_model_map.sql
-mysql -u root -p free_models < migrations/006_add_credential_status_fields.sql
+# 2. 数据库：服务启动自动幂等建表，无需手动步骤；
+
+#    或从存量 MySQL 迁移数据（在仓库根目录 ../ 运行，脚本自动建表并导出 SQLite 文件；
+#    uv 按 PEP 723 注释自动装依赖，无 uv 时先 pip install pymysql cryptography）：
+#    uv run migrate_mysql_to_sqlite.py --mysql-url mysql://user:pass@127.0.0.1:3306/free_models
+#    然后将 DATABASE_URL 指向生成的 free_models.db（默认输出到仓库根目录）
 
 # 3. 运行
 cargo run              # 开发
@@ -40,15 +38,13 @@ curl http://localhost:8080/health
 
 | 变量 | 默认值 | 必填 | 说明 |
 |------|--------|------|------|
-| `DATABASE_URL` | — | 是 | MySQL 连接串 |
+| `DATABASE_URL` | — | 是 | SQLite 连接串，如 `sqlite://free_models.db?mode=rwc` |
 | `ENCRYPTION_KEY` | — | 是 | AES-256-GCM 密钥，64 位 hex（32 字节），用 `openssl rand -hex 32` 生成 |
 | `SERVER_HOST` | `0.0.0.0` | 否 | 监听地址 |
 | `SERVER_PORT` | `8080` | 否 | 监听端口 |
-| `DB_MAX_CONNECTIONS` | `100` | 否 | 数据库连接池上限 |
+| `DB_MAX_CONNECTIONS` | `10` | 否 | 数据库连接池上限（`.env.example` 推荐值 100） |
+| `SCHEDULER_CACHE_TTL_SEC` | `30` | 否 | 模型调度缓存 TTL（秒） |
 | `RUST_LOG` | `info` | 否 | 日志级别（env_logger 读取，`.env.example` 推荐值） |
-| `REDIS_URL` | `redis://127.0.0.1:6379` | 否 | Redis 地址 |
-| `REDIS_ENABLED` | `true` | 否 | 设为 `false` 禁用 Redis，全部降级到内存缓存 |
-| `REDIS_CACHE_TTL_MODEL_SEC` | `30` | 否 | 模型调度缓存 TTL（Redis） |
 | `CIRCUIT_BREAKER_THRESHOLD` | `3` | 否 | 熔断器失败次数阈值 |
 | `CIRCUIT_BREAKER_OPEN_TTL` | `30` | 否 | 熔断器开启持续时间（秒） |
 | `CIRCUIT_BREAKER_MAX_CAPACITY` | `10000` | 否 | 熔断器条目缓存上限（moka） |
@@ -56,8 +52,6 @@ curl http://localhost:8080/health
 | `CACHE_AFFINITY_TTL_SEC` | `300` | 否 | 模型-供应商亲和性缓存 TTL（秒） |
 | `API_KEY_CACHE_MAX_CAPACITY` | `10000` | 否 | API Key 缓存上限（moka） |
 | `SSRF_CACHE_MAX_CAPACITY` | `10000` | 否 | SSRF 校验结果缓存上限（moka） |
-| `REDIS_CACHE_TTL_PROVIDER_SEC` | `600` | 否 | 未使用：仅在 `.env.example` 中保留，`config.rs` 不读取 |
-| `REDIS_CACHE_TTL_PENALTY_SEC` | `1800` | 否 | 未使用：仅在 `.env.example` 中保留，`config.rs` 不读取 |
 
 ---
 
@@ -106,16 +100,10 @@ free_models_server/
 ├── Dockerfile
 ├── .env.example
 ├── migrations/
-│   ├── 001_init.sql                     # provider_config / model_config / api_key
-│   ├── 002_add_model_config_columns.sql # model_config 增加 model_id / timeout / protocols
-│   ├── 003_add_admin_key_and_usage.sql  # admin_key / usage_log / provider_credential；model_config 增加 context_length
-│   ├── 004_create_usage_log_daily.sql   # usage_log_daily 日汇总表
-│   ├── 005_create_provider_model_map.sql# provider_model_map 映射表；model_config 瘦身；usage_log_daily 增加 provider_credential_id
-│   └── 006_add_credential_status_fields.sql # provider_credential 增加 quota_exhausted
+│   └── 001_sqlite_schema.sql           # SQLite 全量建表（7 张业务表 + usage_log_daily 日汇总表）
 └── src/
     ├── main.rs                          # 入口、路由注册、启动（/health、/v1/*、/admin/*）
     ├── app.rs                           # AppState、HTTP Client 构建（UA: FreeModelsServer/1.0）
-    ├── cache.rs                         # RedisManager（可选 Redis，自动降级内存）
     ├── config.rs                        # 环境变量读取与默认值
     ├── response.rs                      # 统一错误响应（OpenAI / Anthropic 格式）
     ├── task.rs                          # 优雅关闭、每日 00:05 UTC 归档定时任务
@@ -161,11 +149,11 @@ free_models_server/
     │   └── proxy_service.rs             # 上游转发 + 故障切换 + SSE + 用量日志 + 配额标记
     └── util/
         ├── mod.rs
-        ├── api_key_cache.rs             # API Key 缓存（Redis Set + 内存 fallback）
+        ├── api_key_cache.rs             # API Key 校验集合缓存（moka）
         ├── cache_affinity.rs            # 模型-供应商亲和性缓存（moka）
         ├── encryption.rs                # AES-256-GCM 加解密
         ├── model_scheduler.rs           # 模型调度：活跃配置查询 + 凭证解密 + 排序
-        ├── penalty.rs                   # 熔断器（moka + Redis 惩罚）
+        ├── penalty.rs                   # 熔断器（moka）
         ├── proxy_ssrf.rs                # SSRF 防护（私网 IP 拦截 + DNS fail-closed）
         ├── proxy_types.rs               # Protocol 三协议 / UsageInfo / 日志上下文
         ├── stream_usage_scanner.rs      # SSE 流式 usage 扫描
@@ -190,13 +178,13 @@ free_models_server/
 客户端请求
   → AuthMiddleware（Bearer Token 鉴权，基于 API Key 缓存）
   → chat_handler / admin handler（Admin 侧先经 AdminAuthMiddleware：Ed25519 签名 + 时间戳 ±300s + Nonce + BodyHash）
-  → model_scheduler 调度（多级缓存 → 活跃配置筛选 → 凭证解密 → 协议/上下文窗口过滤）
+  → model_scheduler 调度（调度缓存 → 活跃配置筛选 → 凭证解密 → 协议/上下文窗口过滤）
   → proxy_service 转发（亲和性排序 → 熔断器/配额检查 → SSRF 校验 → 上游请求 → 故障切换）
   → usage_log_collector 异步批量写入 usage_log
   → 每日 00:05 UTC 由 task.rs 将昨日明细归档到 usage_log_daily
 ```
 
-**多级缓存：** Redis（模型调度缓存，TTL 30s）+ 内存 fallback；熔断器、缓存亲和性、API Key 缓存、SSRF 校验结果均基于 moka 内存缓存。
+**进程内内存缓存：** 全部基于 moka —— 模型调度缓存使用带 TTL 的 future Cache（`SCHEDULER_CACHE_TTL_SEC` 可配，默认 30s）；API Key 校验集合、熔断器、模型-供应商亲和性、SSRF 校验结果均为 moka 内存缓存。API Key 增删改及 `/admin/cache/refresh` 会触发全量重建。
 
 ---
 

@@ -69,7 +69,7 @@ impl UsageLogStoreSeaorm {
     ) -> Result<UsageLogStatsResponse, StoreError> {
         let (where_clause, where_values) = build_where_clause(
             "request_timestamp",
-            "< DATE_ADD(?, INTERVAL 1 DAY)",
+            "< date(?, '+1 day')",
             start_time,
             end_time,
         )?;
@@ -283,23 +283,23 @@ fn build_where_clause(
 fn build_agg_select(for_daily: bool) -> &'static str {
     if for_daily {
         "\
-         CAST(SUM(requests) AS SIGNED) AS requests, \
-         CAST(SUM(prompt_tokens) AS SIGNED) AS prompt_tokens, \
-         CAST(SUM(completion_tokens) AS SIGNED) AS completion_tokens, \
-         CAST(SUM(total_tokens) AS SIGNED) AS total_tokens, \
-         CAST(SUM(cache_hit_tokens) AS SIGNED) AS cache_hit_tokens, \
-         CAST(SUM(cache_miss_tokens) AS SIGNED) AS cache_miss_tokens, \
+         CAST(SUM(requests) AS INTEGER) AS requests, \
+         CAST(SUM(prompt_tokens) AS INTEGER) AS prompt_tokens, \
+         CAST(SUM(completion_tokens) AS INTEGER) AS completion_tokens, \
+         CAST(SUM(total_tokens) AS INTEGER) AS total_tokens, \
+         CAST(SUM(cache_hit_tokens) AS INTEGER) AS cache_hit_tokens, \
+         CAST(SUM(cache_miss_tokens) AS INTEGER) AS cache_miss_tokens, \
          CAST(SUM(requests * avg_duration_ms) AS DOUBLE PRECISION) / SUM(requests) AS avg_duration_ms, \
          MIN(min_duration_ms) AS min_duration_ms, \
          MAX(max_duration_ms) AS max_duration_ms"
     } else {
         "\
          COUNT(*) AS requests, \
-         CAST(SUM(prompt_tokens) AS SIGNED) AS prompt_tokens, \
-         CAST(SUM(completion_tokens) AS SIGNED) AS completion_tokens, \
-         CAST(SUM(total_tokens) AS SIGNED) AS total_tokens, \
-         CAST(SUM(cache_hit_tokens) AS SIGNED) AS cache_hit_tokens, \
-         CAST(SUM(cache_miss_tokens) AS SIGNED) AS cache_miss_tokens, \
+         CAST(SUM(prompt_tokens) AS INTEGER) AS prompt_tokens, \
+         CAST(SUM(completion_tokens) AS INTEGER) AS completion_tokens, \
+         CAST(SUM(total_tokens) AS INTEGER) AS total_tokens, \
+         CAST(SUM(cache_hit_tokens) AS INTEGER) AS cache_hit_tokens, \
+         CAST(SUM(cache_miss_tokens) AS INTEGER) AS cache_miss_tokens, \
          CAST(AVG(duration_ms) AS DOUBLE) AS avg_duration_ms, \
          MIN(duration_ms) AS min_duration_ms, \
          MAX(duration_ms) AS max_duration_ms"
@@ -342,14 +342,14 @@ fn build_group_clauses(group_by: &str, for_usage_log: bool) -> Result<(String, S
         }
         "credential" => Ok((
             "CAST(provider_credential_id AS CHAR) AS dimension_id, \
-             CONCAT('Credential #', COALESCE(provider_credential_id, '')) AS dimension_name"
+             'Credential #' || COALESCE(CAST(provider_credential_id AS CHAR), '') AS dimension_name"
                 .to_string(),
             "GROUP BY provider_credential_id".to_string(),
             "ORDER BY provider_credential_id".to_string(),
         )),
         "provider_model" => Ok((
-            "CONCAT(provider_config_id, '-', model_config_id) AS dimension_id, \
-             CONCAT(provider_name, ' / ', model_name) AS dimension_name"
+            "CAST(provider_config_id AS CHAR) || '-' || CAST(model_config_id AS CHAR) AS dimension_id, \
+             provider_name || ' / ' || model_name AS dimension_name"
                 .to_string(),
             "GROUP BY provider_config_id, provider_name, model_config_id, model_name".to_string(),
             "ORDER BY provider_name, model_name".to_string(),

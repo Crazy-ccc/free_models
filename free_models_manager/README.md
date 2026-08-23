@@ -24,8 +24,15 @@ pnpm tauri build
 ### 前置条件
 
 - Node.js 18+
-- pnpm 11+
+- pnpm 11+（`package.json` 中通过 `packageManager` 锁定 11.16.0）
 - Rust toolchain（参考 [Tauri 官方文档](https://v2.tauri.app/start/prerequisites/)）
+
+### 常用校验命令
+
+```bash
+pnpm build              # tsc 类型检查 + vite 构建（TS 错误会导致构建失败）
+npx tsc --noEmit        # 仅 TypeScript 类型检查
+```
 
 ---
 

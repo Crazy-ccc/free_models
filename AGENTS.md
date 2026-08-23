@@ -4,13 +4,12 @@
 
 ## free_models_server (Rust)
 
-- **技术栈**: Rust edition 2024, actix-web 4, SeaORM 2 (MySQL), Redis, reqwest 0.12, tiktoken-rs, ed25519-dalek, AES-256-GCM
-- **架构**: 单 crate 内模块化数据访问层 —— `src/db/` 包含 SeaORM 实体（`entities/`）、实现（`impls/`）、类型（`types.rs`）以及 `Database` 结构体/`StoreError`/`init_db`/`build_database`；`src/cache.rs` 包含 `RedisManager`。业务代码直接调用具体 store 结构体。
+- **技术栈**: Rust edition 2024, actix-web 4, SeaORM 2 (SQLite), reqwest 0.12, tiktoken-rs, ed25519-dalek, AES-256-GCM
+- **架构**: 单 crate 内模块化数据访问层 —— `src/db/` 包含 SeaORM 实体（`entities/`）、实现（`impls/`）、类型（`types.rs`）以及 `Database` 结构体/`StoreError`/`init_db`/`build_database`。业务代码直接调用具体 store 结构体。
 - **入口**: `src/main.rs` —— 路由包含 `/health`、`/v1/models`、`/v1/chat/completions`、`/v1/messages`、`/v1/responses`（公开，Bearer token）以及 `/admin/*`（Ed25519 签名）
-- **迁移**: `migrations/` 中的手动 SQL 文件，按顺序执行（`001`–`005`）。**非** SeaORM 迁移。
-- **配置**: 通过 `dotenv` 加载 `.env`。必需项：`DATABASE_URL`、`ENCRYPTION_KEY`（64 位 hex = 32 字节，用 `openssl rand -hex 32` 生成）。可选项：`SERVER_HOST`、`SERVER_PORT`、`REDIS_*`、`RUST_LOG`、`DB_MAX_CONNECTIONS`、`CIRCUIT_BREAKER_*`。
-- **Redis**: 可选（`REDIS_ENABLED=false` 禁用它）。透明降级到内存缓存。
-- **缓存**: 多级 —— Redis（可配置 TTL：模型 30s、供应商 600s、惩罚 1800s）+ 内存 fallback。Redis key 统一使用 `app:free_models:` 命名空间前缀。
+- **迁移**: `migrations/001_sqlite_schema.sql`（最终态 schema，含 last_updated 触发器），由 `init_db` 在启动时自动幂等执行（全 IF NOT EXISTS），全新部署无需手动建表；存量 MySQL 数据用 `uv run migrate_mysql_to_sqlite.py --mysql-url <url>` 一键转换（脚本头部 PEP 723 声明依赖，uv 自动安装并执行）。**非** SeaORM 迁移。
+- **配置**: 通过 `dotenv` 加载 `.env`。必需项：`DATABASE_URL`、`ENCRYPTION_KEY`（64 位 hex = 32 字节，用 `openssl rand -hex 32` 生成）。可选项：`SERVER_HOST`、`SERVER_PORT`、`SCHEDULER_CACHE_TTL_SEC`、`RUST_LOG`、`DB_MAX_CONNECTIONS`、`CIRCUIT_BREAKER_*`。
+- **缓存**: 全部为进程内内存缓存 —— 模型调度缓存使用带 TTL 的 moka future Cache（`SCHEDULER_CACHE_TTL_SEC` 可配，默认 30s）；API Key 校验集合、熔断器、模型-供应商亲和性、SSRF 校验结果均为 moka 内存缓存。API Key 增删改及 `/admin/cache/refresh` 会触发全量重建。
 - **Admin 鉴权**: Ed25519 签名。请求头：`X-Admin-Fingerprint`、`X-Admin-Timestamp`、`X-Admin-Signature`（签名内容 `METHOD:PATH:TIMESTAMP`，时间戳允许 ±300 秒防重放）。公钥存储在 `admin_key` 表中，fingerprint 构建方式：Ed25519 raw 公钥(32 字节)→SHA256 哈希→Base64 无填充编码→添加 `SHA256:` 前缀。
 - **SSRF 防护**: provider URL 经 `proxy_ssrf::validate_url_safe` 校验，拦截私网 IP，DNS 解析失败时 fail-closed。校验失败对代理转发返回 `Fail`（不重试），对 admin 查询返回通用错误信息（不泄露内网 IP）。
 - **HTTP client**: `app::build_client` 构建的 reqwest Client 统一设置 `User-Agent: FreeModelsServer/1.0`，对所有出站请求（模型转发、凭证测试、模型列表拉取）生效。
@@ -27,7 +26,7 @@
 
 ## free_models_manager (Tauri + React)
 
-- **技术栈**: Tauri v2, React 18, TypeScript, Ant Design 6, LESS, Vite 5
+- **技术栈**: Tauri v2, React 18, TypeScript, LESS, Vite 5（UI 为自研 "Doodle" 手绘组件库 `src/components/doodle/`，无 Ant Design 依赖）
 - **入口**: `src/main.tsx`，路由在 `src/App.tsx`
 - **命令**:
   ```bash

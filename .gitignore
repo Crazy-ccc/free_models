@@ -13,3 +13,13 @@
 /free_models_manager/dist
 /free_models_manager/src-tauri/target
 /free_models_manager/src-tauri/gen
+
+.uv-cache/
+
+# sqlite database files
+*.db
+*.db-shm
+*.db-wal
+
+# python
+__pycache__/

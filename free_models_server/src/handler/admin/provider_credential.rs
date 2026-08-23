@@ -18,13 +18,22 @@ pub struct CreateProviderCredentialRequest {
     pub is_active: Option<bool>,
 }
 
+fn deserialize_double_option<'de, D>(de: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<String>::deserialize(de)?))
+}
+
 #[derive(Deserialize, Default)]
 #[serde(default)]
 pub struct UpdateProviderCredentialRequest {
     pub provider_id: Option<i32>,
-    pub name: Option<String>,
+    #[serde(deserialize_with = "deserialize_double_option")]
+    pub name: Option<Option<String>>,
     pub api_key: Option<String>,
-    pub account: Option<String>,
+    #[serde(deserialize_with = "deserialize_double_option")]
+    pub account: Option<Option<String>>,
     pub password: Option<String>,
     pub priority: Option<i32>,
     pub is_active: Option<bool>,
@@ -132,6 +141,9 @@ pub async fn create_provider_credential(
     state: web::Data<AppState>,
     body: web::Json<CreateProviderCredentialRequest>,
 ) -> HttpResponse {
+    if body.api_key.trim().is_empty() {
+        return response::bad_request("API key must not be empty");
+    }
     let input = provider_credential_service::CredentialInput {
         provider_id: body.provider_id,
         name: body.name.clone().unwrap_or_default(),

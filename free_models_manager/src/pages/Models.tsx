@@ -24,7 +24,7 @@ interface FormState {
 const EMPTY_FORM: FormState = {
   name: '',
   priority: 0,
-  timeout: 30,
+  timeout: 300,
   context_length: 256000,
   is_active: true,
 };
@@ -74,7 +74,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
     priority: 0,
     status: 'available',
     context_length: 256000,
-    timeout: 30,
+    timeout: 300,
     is_active: true,
   });
 
@@ -95,7 +95,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
       priority: item.priority,
       status: item.status,
       context_length: item.context_length ?? 256000,
-      timeout: item.timeout ?? 30,
+      timeout: item.timeout ?? 300,
       is_active: item.is_active,
     });
     setDrawerTitle('编辑供应商映射');
@@ -111,7 +111,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
       priority: 0,
       status: 'available',
       context_length: 256000,
-      timeout: 30,
+      timeout: 300,
       is_active: true,
     });
     setDrawerTitle('新建供应商映射');

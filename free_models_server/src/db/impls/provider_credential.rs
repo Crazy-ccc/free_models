@@ -22,9 +22,9 @@ pub struct CredentialInput {
 #[derive(Clone, Default)]
 pub struct CredentialUpdate {
     pub provider_id: Option<i32>,
-    pub name: Option<String>,
+    pub name: Option<Option<String>>,
     pub new_api_key: Option<String>,
-    pub account: Option<String>,
+    pub account: Option<Option<String>>,
     pub password: Option<String>,
     pub priority: Option<i32>,
     pub is_active: Option<bool>,
@@ -95,12 +95,12 @@ impl ProviderCredentialStoreSeaorm {
 
         let mut active: ActiveModel = model.into();
         if let Some(v) = update.provider_id { active.provider_id = Set(v); }
-        if let Some(v) = &update.name { active.name = Set(v.clone()); }
+        if let Some(v) = &update.name { active.name = Set(v.clone().unwrap_or_default()); }
         if let Some(v) = &update.new_api_key {
             active.api_key = Set(v.clone());
             active.quota_exhausted = Set(false);
         }
-        if let Some(v) = &update.account { active.account = Set(Some(v.clone())); }
+        if let Some(v) = &update.account { active.account = Set(v.clone()); }
         if let Some(v) = &update.password { active.encrypted_password = Set(Some(v.clone())); }
         if let Some(v) = update.priority { active.priority = Set(v); }
         if let Some(v) = update.is_active { active.is_active = Set(v); }
