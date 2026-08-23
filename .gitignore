@@ -23,3 +23,6 @@
 
 # python
 __pycache__/
+
+# docker env (contains secrets)
+/free_models_server/.env.docker

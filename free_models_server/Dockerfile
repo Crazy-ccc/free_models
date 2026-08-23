@@ -12,6 +12,7 @@ WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
 COPY src src/
+COPY migrations migrations/
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
@@ -23,7 +24,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 FROM alpine:3.24.1
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata \
+    && mkdir -p /data \
+    && chown nobody:nobody /data
 
 COPY --from=builder --chown=nobody:nobody \
     /tmp/free_models_server /usr/local/bin/free_models_server
