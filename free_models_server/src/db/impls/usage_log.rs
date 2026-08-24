@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use sea_orm::{ConnectionTrait, DatabaseConnection, EntityTrait, QueryResult, Set, Statement, Value};
+use sea_orm::{
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryResult, Set, Statement, TransactionTrait, Value,
+};
 
 use crate::db::types::{UsageLogInsert, UsageLogStatItem, UsageLogStatsResponse};
 use crate::db::StoreError;
@@ -97,27 +100,39 @@ impl UsageLogStoreSeaorm {
             .format("%Y-%m-%d")
             .to_string();
 
-        if self.is_already_archived(&yesterday).await? {
-            return self.delete_raw_logs(&yesterday).await;
+        let mut txn = self.db.begin().await.map_err(StoreError::from)?;
+
+        if Self::is_already_archived_on(&mut txn, &yesterday).await? {
+            let deleted = Self::delete_raw_logs_on(&mut txn, &yesterday).await?;
+            txn.commit().await.map_err(StoreError::from)?;
+            return Ok(deleted);
         }
 
-        self.insert_daily_aggregate(&yesterday).await?;
-        self.delete_raw_logs(&yesterday).await
+        Self::insert_daily_aggregate_on(&mut txn, &yesterday).await?;
+        let deleted = Self::delete_raw_logs_on(&mut txn, &yesterday).await?;
+        txn.commit().await.map_err(StoreError::from)?;
+        Ok(deleted)
     }
 
-    async fn is_already_archived(&self, yesterday: &str) -> Result<bool, StoreError> {
-        let backend = self.db.get_database_backend();
+    async fn is_already_archived_on(
+        txn: &mut DatabaseTransaction,
+        yesterday: &str,
+    ) -> Result<bool, StoreError> {
+        let backend = DatabaseBackend::Sqlite;
         let check_sql = "SELECT COUNT(*) as cnt FROM usage_log_daily WHERE stat_date = ?";
         let check_stmt = Statement::from_sql_and_values(backend, check_sql, vec![yesterday.into()]);
-        let check_row = self.db.query_one_raw(check_stmt).await.map_err(StoreError::from)?;
+        let check_row = txn.query_one_raw(check_stmt).await.map_err(StoreError::from)?;
         Ok(match check_row {
             Some(row) => row.try_get_by_index::<i64>(0).unwrap_or(0) > 0,
             None => false,
         })
     }
 
-    async fn insert_daily_aggregate(&self, yesterday: &str) -> Result<(), StoreError> {
-        let backend = self.db.get_database_backend();
+    async fn insert_daily_aggregate_on(
+        txn: &mut DatabaseTransaction,
+        yesterday: &str,
+    ) -> Result<(), StoreError> {
+        let backend = DatabaseBackend::Sqlite;
         let insert_sql = "\
             INSERT INTO usage_log_daily \
             (stat_date, api_key_id, api_key_name, provider_config_id, provider_credential_id, provider_name, \
@@ -125,9 +140,13 @@ impl UsageLogStoreSeaorm {
              total_tokens, cache_hit_tokens, cache_miss_tokens, avg_duration_ms, min_duration_ms, max_duration_ms) \
             SELECT \
              DATE(request_timestamp) AS stat_date, \
-             api_key_id, api_key_name, \
-             provider_config_id, provider_credential_id, provider_name, \
-             model_config_id, model_name, \
+             api_key_id, \
+             MAX(api_key_name) AS api_key_name, \
+             provider_config_id, \
+             MAX(provider_credential_id) AS provider_credential_id, \
+             MAX(provider_name) AS provider_name, \
+             model_config_id, \
+             MAX(model_name) AS model_name, \
              COUNT(*) AS requests, \
              SUM(prompt_tokens) AS prompt_tokens, \
              SUM(completion_tokens) AS completion_tokens, \
@@ -139,18 +158,20 @@ impl UsageLogStoreSeaorm {
              MAX(duration_ms) AS max_duration_ms \
             FROM usage_log \
             WHERE DATE(request_timestamp) = ? \
-            GROUP BY stat_date, api_key_id, api_key_name, provider_config_id, provider_credential_id, provider_name, \
-                     model_config_id, model_name";
+            GROUP BY DATE(request_timestamp), api_key_id, provider_config_id, model_config_id";
         let insert_stmt = Statement::from_sql_and_values(backend, insert_sql, vec![yesterday.into()]);
-        self.db.execute_raw(insert_stmt).await.map_err(StoreError::from)?;
+        txn.execute_raw(insert_stmt).await.map_err(StoreError::from)?;
         Ok(())
     }
 
-    async fn delete_raw_logs(&self, yesterday: &str) -> Result<u64, StoreError> {
-        let backend = self.db.get_database_backend();
+    async fn delete_raw_logs_on(
+        txn: &mut DatabaseTransaction,
+        yesterday: &str,
+    ) -> Result<u64, StoreError> {
+        let backend = DatabaseBackend::Sqlite;
         let delete_sql = "DELETE FROM usage_log WHERE DATE(request_timestamp) = ?";
         let delete_stmt = Statement::from_sql_and_values(backend, delete_sql, vec![yesterday.into()]);
-        let result = self.db.execute_raw(delete_stmt).await.map_err(StoreError::from)?;
+        let result = txn.execute_raw(delete_stmt).await.map_err(StoreError::from)?;
         Ok(result.rows_affected())
     }
 }
@@ -448,4 +469,163 @@ fn compute_date_ranges(
         _ => (true, true),
     };
     Ok((has_historical, has_today))
+}
+
+#[cfg(test)]
+mod archive_tests {
+    use super::*;
+
+    async fn setup_store() -> UsageLogStoreSeaorm {
+        let db = crate::db::test_support::connect_in_memory_db().await;
+        UsageLogStoreSeaorm::new(db)
+    }
+
+    fn yesterday_str() -> String {
+        (chrono::Utc::now() - chrono::Duration::days(1))
+            .format("%Y-%m-%d")
+            .to_string()
+    }
+
+    fn log_row(
+        key_id: i32,
+        key_name: &str,
+        provider_id: i32,
+        credential_id: i32,
+        model_id: i32,
+        model_name: &str,
+        prompt_tokens: i32,
+    ) -> usage_log::ActiveModel {
+        usage_log::ActiveModel {
+            api_key_id: Set(Some(key_id)),
+            api_key_name: Set(Some(key_name.to_string())),
+            model_config_id: Set(Some(model_id)),
+            provider_config_id: Set(Some(provider_id)),
+            provider_credential_id: Set(Some(credential_id)),
+            model_name: Set(model_name.to_string()),
+            provider_name: Set("test-provider".to_string()),
+            protocol: Set("openai".to_string()),
+            status: Set("success".to_string()),
+            error_message: Set(None),
+            prompt_tokens: Set(prompt_tokens),
+            completion_tokens: Set(prompt_tokens),
+            total_tokens: Set(prompt_tokens * 2),
+            cache_hit_tokens: Set(0),
+            cache_miss_tokens: Set(prompt_tokens * 2),
+            duration_ms: Set(100),
+            is_stream: Set(false),
+            request_timestamp: Set(chrono::Utc::now().naive_utc()),
+            ..Default::default()
+        }
+    }
+
+    async fn shift_all_to_yesterday(store: &UsageLogStoreSeaorm) {
+        store
+            .db
+            .execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE usage_log SET request_timestamp = ?",
+                vec![format!("{} 12:00:00", yesterday_str()).into()],
+            ))
+            .await
+            .expect("shift timestamps to yesterday");
+    }
+
+    async fn table_count(store: &UsageLogStoreSeaorm, table: &str) -> i64 {
+        let row = store
+            .db
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                format!("SELECT COUNT(*) FROM {}", table),
+            ))
+            .await
+            .expect("count query")
+            .expect("count row");
+        row.try_get_by_index::<i64>(0).expect("count value")
+    }
+
+    #[tokio::test]
+    async fn archive_groups_by_unique_key_and_is_idempotent() {
+        let store = setup_store().await;
+        usage_log::Entity::insert_many(vec![
+            log_row(1, "k1", 10, 100, 20, "mA", 10),
+            log_row(1, "k1", 10, 100, 20, "mA", 4),
+            log_row(1, "k1", 10, 101, 20, "mA", 6),
+            log_row(1, "k1", 10, 100, 21, "mB", 5),
+            log_row(2, "k2", 11, 200, 22, "mC", 7),
+        ])
+        .exec(&store.db)
+        .await
+        .expect("seed logs");
+        shift_all_to_yesterday(&store).await;
+
+        let deleted = store.archive_yesterday().await.expect("first archive");
+        assert_eq!(deleted, 5);
+        assert_eq!(table_count(&store, "usage_log").await, 0);
+        assert_eq!(table_count(&store, "usage_log_daily").await, 3);
+
+        let rows = store
+            .db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "SELECT stat_date, requests, total_tokens FROM usage_log_daily \
+                 WHERE api_key_id = 1 AND provider_config_id = 10 AND model_config_id = 20",
+                vec![],
+            ))
+            .await
+            .expect("grouped row query");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].try_get_by_index::<String>(0).expect("stat_date"),
+            yesterday_str()
+        );
+        assert_eq!(rows[0].try_get_by_index::<i64>(1).expect("requests"), 3);
+        assert_eq!(rows[0].try_get_by_index::<i64>(2).expect("total_tokens"), 40);
+
+        usage_log::Entity::insert_many(vec![log_row(3, "k3", 12, 300, 23, "mD", 9)])
+            .exec(&store.db)
+            .await
+            .expect("seed late log");
+        shift_all_to_yesterday(&store).await;
+
+        let deleted = store.archive_yesterday().await.expect("second archive");
+        assert_eq!(deleted, 1);
+        assert_eq!(table_count(&store, "usage_log").await, 0);
+        assert_eq!(table_count(&store, "usage_log_daily").await, 3);
+    }
+
+    #[tokio::test]
+    async fn archive_survives_renamed_key_within_same_group() {
+        let store = setup_store().await;
+        usage_log::Entity::insert_many(vec![
+            log_row(1, "new-name", 10, 100, 20, "mA", 8),
+            log_row(1, "old-name", 10, 100, 20, "mA", 9),
+        ])
+        .exec(&store.db)
+        .await
+        .expect("seed renamed logs");
+        shift_all_to_yesterday(&store).await;
+
+        let deleted = store.archive_yesterday().await.expect("archive renamed group");
+        assert_eq!(deleted, 2);
+
+        let rows = store
+            .db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "SELECT api_key_name, requests, prompt_tokens FROM usage_log_daily",
+                vec![],
+            ))
+            .await
+            .expect("renamed group query");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].try_get_by_index::<String>(0).expect("api_key_name"),
+            "old-name"
+        );
+        assert_eq!(rows[0].try_get_by_index::<i64>(1).expect("requests"), 2);
+        assert_eq!(
+            rows[0].try_get_by_index::<i64>(2).expect("prompt_tokens"),
+            17
+        );
+    }
 }
