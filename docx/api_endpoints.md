@@ -634,7 +634,7 @@ GET /admin/usage_log/stats?group_by=<维度>&start_time=<ISO>&end_time=<ISO>
 
 ### Admin 公钥管理
 
-服务端管理端鉴权使用 Ed25519 签名，公钥存储在数据库 `admin_key` 表中（fingerprint 由 Ed25519 公钥 SHA256 生成，格式 `SHA256:` 前缀 + Base64 无填充）。**当前未开放 HTTP 管理接口**，公钥的增删改直接操作数据库完成。签名鉴权细节见 [authentication.md](./authentication.md)。
+服务端管理端鉴权使用 Ed25519 签名，公钥存储在数据库 `admin_key` 表中（fingerprint 由 Ed25519 公钥 SHA256 生成，格式 `SHA256:` 前缀 + Base64 无填充）。**当前未开放 HTTP 管理接口**，公钥管理通过环境变量引导完成：首次部署设置环境变量 `ADMIN_BOOTSTRAP_PUBLIC_KEY`（OpenSSH 单行公钥，形态如 `ssh-ed25519 AAAA... comment`，由 `ssh-keygen -t ed25519` 生成），服务端启动时解析校验该公钥、计算指纹并幂等写入 `admin_key` 表（默认备注名可用可选的 `ADMIN_BOOTSTRAP_KEY_NAME` 指定）；后续追加管理员钥匙同样只需更新该环境变量并重启服务；停用某把钥匙时将 `admin_key` 表中对应记录的 `is_active` 置为 false（重启不会被自动激活）。签名鉴权细节见 [authentication.md](./authentication.md)。
 
 ### 测试凭证连接
 

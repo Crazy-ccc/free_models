@@ -1,4 +1,5 @@
 mod app;
+mod bootstrap;
 mod config;
 mod db;
 mod handler;
@@ -31,6 +32,7 @@ async fn main() -> std::io::Result<()> {
     let config = Config::from_env();
 
     let database = db::build_database().await;
+    bootstrap::ensure_bootstrap_admin_key(&database.admin_keys).await;
     let usage_log_store = database.usage_logs.clone();
 
     info!(

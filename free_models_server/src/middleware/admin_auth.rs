@@ -121,8 +121,6 @@ where
 
         let method = req.method().to_string();
         let path = req.path().to_string();
-        let nonce_part = nonce.as_deref().unwrap_or("").to_string();
-        let body_hash_part = body_hash.as_deref().unwrap_or("").to_string();
         let service = self.service.clone();
 
         Box::pin(async move {
@@ -140,7 +138,7 @@ where
                 None => return Ok(auth_response(req, "Invalid public key format", HttpResponse::Unauthorized)),
             };
 
-            let payload = format!("{}:{}:{}:{}:{}", method, path, timestamp, nonce_part, body_hash_part);
+            let payload = build_signature_payload(&method, &path, timestamp, nonce.as_deref(), body_hash.as_deref());
             let signature_bytes = match base64::engine::general_purpose::STANDARD.decode(&signature) {
                 Ok(b) => b,
                 Err(_) => return Ok(auth_response(req, "Invalid signature encoding", HttpResponse::Unauthorized)),
@@ -198,4 +196,131 @@ pub fn parse_openssh_ed25519_pubkey(pubkey_str: &str) -> Option<[u8; 32]> {
     let mut key = [0u8; 32];
     key.copy_from_slice(&decoded[19..51]);
     Some(key)
+}
+
+pub fn compute_fingerprint(pubkey_bytes: &[u8; 32]) -> String {
+    use sha2::{Digest, Sha256};
+    let hash = Sha256::digest(pubkey_bytes);
+    format!(
+        "SHA256:{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash)
+    )
+}
+
+fn build_signature_payload(
+    method: &str,
+    path: &str,
+    timestamp: u64,
+    nonce: Option<&str>,
+    body_hash: Option<&str>,
+) -> String {
+    format!(
+        "{}:{}:{}:{}:{}",
+        method,
+        path,
+        timestamp,
+        nonce.unwrap_or(""),
+        body_hash.unwrap_or("")
+    )
+}
+#[cfg(test)]
+mod fingerprint_tests {
+    use super::*;
+
+    #[test]
+    fn fingerprint_matches_sha256_urlsafe_nopad_format() {
+        let key = [7u8; 32];
+        let fp = compute_fingerprint(&key);
+        assert!(fp.starts_with("SHA256:"));
+        let encoded = fp.trim_start_matches("SHA256:");
+        assert_eq!(encoded.len(), 43);
+        use base64::Engine;
+        let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(encoded)
+            .unwrap();
+        assert_eq!(decoded.len(), 32);
+        use sha2::{Digest, Sha256};
+        assert_eq!(decoded, Sha256::digest([7u8; 32]).to_vec());
+    }
+
+    #[test]
+    fn fingerprint_is_deterministic() {
+        assert_eq!(compute_fingerprint(&[1u8; 32]), compute_fingerprint(&[1u8; 32]));
+        assert_ne!(compute_fingerprint(&[1u8; 32]), compute_fingerprint(&[2u8; 32]));
+    }
+}
+
+
+#[cfg(test)]
+mod signature_tests {
+    use super::*;
+    use ed25519_dalek::Signer;
+
+    fn wire_pubkey(key_bytes: [u8; 32], key_type: &[u8]) -> String {
+        use base64::engine::general_purpose::STANDARD;
+        let mut blob = Vec::new();
+        blob.extend_from_slice(&(key_type.len() as u32).to_be_bytes());
+        blob.extend_from_slice(key_type);
+        blob.extend_from_slice(&32u32.to_be_bytes());
+        blob.extend_from_slice(&key_bytes);
+        format!("ssh-ed25519 {}", STANDARD.encode(blob))
+    }
+
+    #[test]
+    fn payload_is_five_colon_segments() {
+        assert_eq!(
+            build_signature_payload("POST", "/admin/keys", 1700000000, Some("abc"), Some("deadbeef")),
+            "POST:/admin/keys:1700000000:abc:deadbeef"
+        );
+    }
+
+    #[test]
+    fn payload_missing_optionals_become_empty() {
+        assert_eq!(build_signature_payload("GET", "/v1/x", 5, None, None), "GET:/v1/x:5::");
+    }
+
+    #[test]
+    fn parse_openssh_valid_key() {
+        let raw = [3u8; 32];
+        let parsed = parse_openssh_ed25519_pubkey(&wire_pubkey(raw, b"ssh-ed25519")).unwrap();
+        assert_eq!(parsed, raw);
+    }
+
+    #[test]
+    fn parse_openssh_rejects_garbage() {
+        assert!(parse_openssh_ed25519_pubkey("not a key").is_none());
+    }
+
+    #[test]
+    fn parse_openssh_rejects_wrong_type() {
+        assert!(parse_openssh_ed25519_pubkey(&wire_pubkey([1u8; 32], b"ssh-rsa")).is_none());
+    }
+
+    #[test]
+    fn parse_openssh_rejects_bad_key_len() {
+        use base64::engine::general_purpose::STANDARD;
+        let mut blob = Vec::new();
+        blob.extend_from_slice(&11u32.to_be_bytes());
+        blob.extend_from_slice(b"ssh-ed25519");
+        blob.extend_from_slice(&16u32.to_be_bytes());
+        blob.extend_from_slice(&[7u8; 16]);
+        let s = format!("ssh-ed25519 {}", STANDARD.encode(blob));
+        assert!(parse_openssh_ed25519_pubkey(&s).is_none());
+    }
+
+    #[test]
+    fn parse_openssh_requires_two_tokens() {
+        assert!(parse_openssh_ed25519_pubkey("AAAAC3NzaC1lZDI1NTE5").is_none());
+    }
+
+    #[test]
+    fn sign_verify_roundtrip_and_tamper() {
+        let signing = ed25519_dalek::SigningKey::from_bytes(&[42u8; 32]);
+        let payload = build_signature_payload("DELETE", "/admin/keys/1", 1234567890, Some("n1"), Some("h1"));
+        let sig = signing.sign(payload.as_bytes());
+        assert!(signing.verifying_key().verify(payload.as_bytes(), &sig).is_ok());
+
+        let tampered = build_signature_payload("PUT", "/admin/keys/1", 1234567890, Some("n1"), Some("h1"));
+        assert!(signing.verifying_key().verify(tampered.as_bytes(), &sig).is_err());
+    }
 }

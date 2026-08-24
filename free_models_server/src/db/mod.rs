@@ -19,6 +19,8 @@ macro_rules! impl_delete_by_id {
 }
 
 pub mod impls;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 use std::fmt;
 
@@ -64,9 +66,9 @@ pub struct Database {
     pub usage_logs: UsageLogStoreSeaorm,
 }
 
-const SCHEMA_DDL: &str = include_str!("../../migrations/001_sqlite_schema.sql");
+pub(crate) const SCHEMA_DDL: &str = include_str!("../../migrations/001_sqlite_schema.sql");
 
-fn split_schema_statements(ddl: &str) -> Vec<String> {
+pub(crate) fn split_schema_statements(ddl: &str) -> Vec<String> {
     let normalized = ddl.replace("\r\n", "\n").replace('\r', "\n");
     let mut statements = Vec::new();
     let mut buf = String::new();
@@ -131,5 +133,35 @@ pub async fn build_database() -> Database {
         api_keys: ApiKeyStoreSeaorm::new(db.clone()),
         admin_keys: AdminKeyStoreSeaorm::new(db.clone()),
         usage_logs: UsageLogStoreSeaorm::new(db),
+    }
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::split_schema_statements;
+
+    #[test]
+    fn splits_on_marker_and_strips_comments() {
+        let ddl = "-- head comment\nCREATE TABLE a (id INTEGER);\n-- >>>\nCREATE TABLE b (id INTEGER);\n";
+        let out = split_schema_statements(ddl);
+        assert_eq!(out.len(), 2);
+        assert!(out[0].starts_with("CREATE TABLE a"), "got: {}", out[0]);
+        assert!(out[1].starts_with("CREATE TABLE b"), "got: {}", out[1]);
+    }
+
+    #[test]
+    fn skips_comment_only_chunks() {
+        let ddl = "-- >>>\n-- only comments here\n-- >>>\nCREATE TABLE c (id INTEGER);\n";
+        let out = split_schema_statements(ddl);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].starts_with("CREATE TABLE c"));
+    }
+
+    #[test]
+    fn tolerates_crlf_input() {
+        let ddl = "CREATE TABLE d (id INTEGER);\r\n-- >>>\r\nCREATE TABLE e (id INTEGER);\r\n";
+        let out = split_schema_statements(ddl);
+        assert_eq!(out.len(), 2);
+        assert!(out.iter().all(|s| !s.contains('\r')));
     }
 }

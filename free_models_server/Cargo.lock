@@ -1431,6 +1431,7 @@ dependencies = [
  "sea-orm",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tiktoken-rs",
  "tokio",
 ]
