@@ -84,3 +84,54 @@ fn is_private_ip(ip: IpAddr) -> bool {
         IpAddr::V6(v6) => v6.is_loopback() || v6.is_unspecified(),
     }
 }
+#[cfg(test)]
+mod ssrf_tests {
+    use super::*;
+
+    #[test]
+    fn extract_host_strips_scheme_port_path() {
+        assert_eq!(extract_host("https://api.example.com:8443/v1/x?q=1").unwrap(), "api.example.com");
+        assert_eq!(extract_host("http://host/a/b").unwrap(), "host");
+    }
+
+    #[test]
+    fn extract_host_rejects_other_schemes() {
+        assert!(extract_host("ftp://example.com").is_err());
+        assert!(extract_host("file:///etc/passwd").is_err());
+    }
+
+    #[test]
+    fn extract_host_rejects_empty() {
+        assert!(extract_host("http://").is_err());
+    }
+
+    #[test]
+    fn private_ip_classes_detected() {
+        for s in ["127.0.0.1", "10.1.2.3", "192.168.0.9", "172.16.5.5", "169.254.3.4", "0.0.0.0", "255.255.255.255", "::1"] {
+            let ip: IpAddr = s.parse().unwrap();
+            assert!(is_private_ip(ip), "should be private: {}", s);
+        }
+    }
+
+    #[test]
+    fn public_ip_allowed() {
+        assert!(!is_private_ip("8.8.8.8".parse().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn rejects_non_http_scheme_before_dns() {
+        assert!(validate_url_safe("ftp://example.com").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn blocks_private_literal_ips() {
+        for url in ["http://127.0.0.1/", "http://10.0.0.2:8080/api", "http://192.168.1.1", "http://169.254.9.9/x"] {
+            assert!(validate_url_safe(url).await.is_err(), "should be blocked: {}", url);
+        }
+    }
+
+    #[tokio::test]
+    async fn allows_public_numeric_ip() {
+        assert!(validate_url_safe("http://8.8.8.8/dns-query").await.is_ok());
+    }
+}
