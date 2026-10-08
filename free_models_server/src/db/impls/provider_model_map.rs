@@ -16,6 +16,7 @@ pub struct ProviderModelMapInput {
     pub status: String,
     pub timeout: Option<i32>,
     pub context_length: Option<i32>,
+    pub custom_headers: Option<String>,
 }
 
 /// 更新 provider_model_map 记录所需的输入参数，所有字段均可选。
@@ -28,6 +29,7 @@ pub struct ProviderModelMapUpdate {
     pub status: Option<String>,
     pub timeout: Option<i32>,
     pub context_length: Option<i32>,
+    pub custom_headers: Option<String>,
 }
 
 pub struct ProviderModelMapStoreSeaorm {
@@ -83,6 +85,7 @@ impl ProviderModelMapStoreSeaorm {
             status: Set(input.status.clone()),
             timeout: Set(input.timeout),
             context_length: Set(input.context_length),
+            custom_headers: Set(input.custom_headers.clone()),
             created_time: Set(now),
             last_updated: Set(now),
             ..Default::default()
@@ -111,6 +114,7 @@ impl ProviderModelMapStoreSeaorm {
         if let Some(v) = update.status.as_deref() { active.status = Set(v.to_owned()); }
         if let Some(v) = update.timeout { active.timeout = Set(Some(v)); }
         if let Some(v) = update.context_length { active.context_length = Set(Some(v)); }
+        if let Some(v) = &update.custom_headers { active.custom_headers = Set(Some(v.clone())); }
         active.last_updated = Set(now);
         let updated = active.update(&self.db).await
             .map_err(StoreError::from)?;

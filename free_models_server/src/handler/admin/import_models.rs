@@ -51,6 +51,7 @@ async fn import_one(
                 status: "available".to_string(),
                 timeout: Some(300),
                 context_length: item.context_length.or(Some(256000)),
+                custom_headers: None,
             };
             if let Err(e) = state.database.provider_model_maps.create(&input).await {
                 return Err(format!("Failed to create map for '{}': {}", model_name, e));

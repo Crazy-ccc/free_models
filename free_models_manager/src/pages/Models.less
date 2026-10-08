@@ -147,3 +147,31 @@
     flex: 1;
   }
 }
+
+.header-editor {
+  display: flex;
+  flex-direction: column;
+  gap: @spacing-sm;
+}
+
+.header-editor-empty {
+  color: @on-surface-variant;
+  font-size: @font-sm;
+  padding: 4px 0;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: @spacing-sm;
+
+  .header-key {
+    flex: 1;
+    margin: 0;
+  }
+
+  .header-value {
+    flex: 1;
+    margin: 0;
+  }
+}

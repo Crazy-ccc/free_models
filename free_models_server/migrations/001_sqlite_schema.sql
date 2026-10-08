@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS provider_model_map (
     protocols TEXT NOT NULL DEFAULT 'openai',
     status TEXT NOT NULL DEFAULT 'available',
     timeout INTEGER NULL,
+    custom_headers TEXT NULL,
     created_time TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (model_id, provider_id)

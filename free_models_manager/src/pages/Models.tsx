@@ -43,6 +43,11 @@ const STATUS_COLOR: Record<string, DoodleTagColor> = {
   deprecated: 'deprecated',
 };
 
+interface HeaderRow {
+  key: string;
+  value: string;
+}
+
 interface MappingFormState {
   provider_id: number;
   provider_model_id: string;
@@ -52,6 +57,33 @@ interface MappingFormState {
   context_length: number;
   timeout: number;
   is_active: boolean;
+  custom_headers: string;
+  headerRows: HeaderRow[];
+}
+
+function parseCustomHeaders(raw: string | null | undefined): HeaderRow[] {
+  if (!raw) return [];
+  try {
+    const obj = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof obj !== 'object' || obj === null) return [];
+    return Object.entries(obj).map(([key, value]) => ({
+      key,
+      value: typeof value === 'string' ? value : JSON.stringify(value),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function serializeCustomHeaders(rows: HeaderRow[]): string | null {
+  const obj: Record<string, string> = {};
+  for (const row of rows) {
+    const key = row.key.trim();
+    if (!key) continue;
+    obj[key] = row.value;
+  }
+  if (Object.keys(obj).length === 0) return null;
+  return JSON.stringify(obj);
 }
 
 interface ModelMappingsPageProps {
@@ -76,6 +108,8 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
     context_length: 256000,
     timeout: 300,
     is_active: true,
+    custom_headers: '',
+    headerRows: [],
   });
 
   const loadMaps = () => {
@@ -97,6 +131,8 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
       context_length: item.context_length ?? 256000,
       timeout: item.timeout ?? 300,
       is_active: item.is_active,
+      custom_headers: item.custom_headers ?? '',
+      headerRows: parseCustomHeaders(item.custom_headers),
     });
     setDrawerTitle('编辑供应商映射');
     setDrawerOpen(true);
@@ -113,6 +149,8 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
       context_length: 256000,
       timeout: 300,
       is_active: true,
+      custom_headers: '',
+      headerRows: [],
     });
     setDrawerTitle('新建供应商映射');
     setDrawerOpen(true);
@@ -125,6 +163,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
 
   const handleSave = async () => {
     try {
+      const custom_headers = serializeCustomHeaders(form.headerRows);
       if (editingItem) {
         await invoke<ProviderModelMap>('update_provider_model_map', {
           serverUrl,
@@ -138,6 +177,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
             context_length: form.context_length,
             timeout: form.timeout,
             is_active: form.is_active,
+            custom_headers,
           },
         });
       } else {
@@ -153,6 +193,7 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
             context_length: form.context_length,
             timeout: form.timeout,
             is_active: form.is_active,
+            custom_headers,
           },
         });
       }
@@ -347,6 +388,58 @@ function ModelMappingsPage({ modelId, modelName, serverUrl, providers, onBack }:
               value={form.timeout}
               onChange={(e) => setForm({ ...form, timeout: Number(e.target.value) })}
             />
+          </div>
+        </div>
+        <div className="form-field">
+          <label className="form-label">自定义请求头</label>
+          <div className="header-editor">
+            {form.headerRows.length === 0 && (
+              <div className="header-editor-empty">未设置自定义请求头</div>
+            )}
+            {form.headerRows.map((row, idx) => (
+              <div key={idx} className="header-row">
+                <input
+                  className="form-input ant-input header-key"
+                  placeholder="Header Name"
+                  value={row.key}
+                  onChange={(e) => {
+                    const rows = [...form.headerRows];
+                    rows[idx] = { ...rows[idx], key: e.target.value };
+                    setForm({ ...form, headerRows: rows });
+                  }}
+                />
+                <input
+                  className="form-input ant-input header-value"
+                  placeholder="Value"
+                  value={row.value}
+                  onChange={(e) => {
+                    const rows = [...form.headerRows];
+                    rows[idx] = { ...rows[idx], value: e.target.value };
+                    setForm({ ...form, headerRows: rows });
+                  }}
+                />
+                <DoodleButton
+                  size="small"
+                  type="danger"
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      headerRows: form.headerRows.filter((_, i) => i !== idx),
+                    })
+                  }
+                >
+                  删除
+                </DoodleButton>
+              </div>
+            ))}
+            <DoodleButton
+              size="small"
+              onClick={() =>
+                setForm({ ...form, headerRows: [...form.headerRows, { key: '', value: '' }] })
+              }
+            >
+              + 添加请求头
+            </DoodleButton>
           </div>
         </div>
       </Drawer>

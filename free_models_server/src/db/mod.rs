@@ -103,6 +103,28 @@ async fn apply_schema(db: &DatabaseConnection) {
     }
 }
 
+/// 幂等补齐列：列已存在则跳过，否则执行 ALTER ADD COLUMN，
+/// 供已存在库平滑升级，重复启动不报错。
+async fn ensure_column(db: &DatabaseConnection, table: &str, column: &str, ddl: &str) {
+    let sql = format!("PRAGMA table_info({})", table);
+    let rows = db
+        .query_all_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
+        .await
+        .expect("Failed to inspect table info");
+    let has = rows
+        .iter()
+        .any(|row| row.try_get::<String>("", "name").map(|name| name == column).unwrap_or(false));
+    if !has {
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            ddl.to_owned(),
+        ))
+        .await
+        .expect("Failed to add column");
+        log::info!("Added missing column {} to table {}", column, table);
+    }
+}
+
 pub async fn init_db() -> DatabaseConnection {
     let url = env::var("DATABASE_URL")
     .expect("DATABASE_URL must be set");
@@ -120,6 +142,12 @@ pub async fn init_db() -> DatabaseConnection {
     let conn = SeaOrmDatabase::connect(opt).await
         .expect("Failed to connect to database");
     apply_schema(&conn).await;
+    ensure_column(
+        &conn,
+        "provider_model_map",
+        "custom_headers",
+        "ALTER TABLE provider_model_map ADD COLUMN custom_headers TEXT",
+    ).await;
     conn
 }
 

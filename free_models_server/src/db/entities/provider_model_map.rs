@@ -15,6 +15,7 @@ pub struct Model {
     pub protocols: String,
     pub status: String,
     pub timeout: Option<i32>,
+    pub custom_headers: Option<String>,
     pub created_time: DateTime,
     pub last_updated: DateTime,
 }

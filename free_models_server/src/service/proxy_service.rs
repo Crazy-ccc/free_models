@@ -4,7 +4,8 @@ use actix_web::web;
 use actix_web::HttpResponseBuilder;
 use log::{debug, error, info, warn};
 use reqwest::Client;
-use reqwest::header::HeaderMap;
+use reqwest::RequestBuilder;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::Value;
 use std::time::Duration;
 
@@ -19,6 +20,48 @@ use crate::util::usage_log_collector::spawn_usage_log;
 
 pub(crate) fn join_url(base_url: &str, path: &str) -> String {
     format!("{}{}", base_url.trim_end_matches('/'), path)
+}
+
+/// 将映射上配置的自定义请求头应用到上游请求。
+/// custom_headers 为 JSON 对象字符串（如 {"X-Tenant":"A"}）。
+/// 非法 JSON、非法头名/头值会被跳过并记 warn，其余正常应用；返回 builder 供链式使用。
+fn apply_custom_headers(builder: RequestBuilder, raw: Option<&str>) -> RequestBuilder {
+    let Some(raw) = raw else { return builder };
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return builder;
+    }
+    let Ok(map) = serde_json::from_str::<serde_json::Map<String, Value>>(raw) else {
+        warn!("custom_headers 不是合法 JSON 对象，已忽略: {}", raw);
+        return builder;
+    };
+    // 先通过 build 读取现有头，再用 insert 语义合并：自定义头可替换同名的协议默认头（如 Authorization）。
+    let mut headers = builder
+        .try_clone()
+        .and_then(|b| b.build().ok())
+        .map(|req| req.headers().clone())
+        .unwrap_or_default();
+    for (name, value) in map {
+        let Ok(header_name) = HeaderName::from_bytes(name.as_bytes()) else {
+            warn!("custom_headers 存在非法头名 '{}'，已跳过", name);
+            continue;
+        };
+        let value_str = match value {
+            Value::String(s) => s,
+            Value::Number(n) => n.to_string(),
+            Value::Bool(b0) => b0.to_string(),
+            _ => {
+                warn!("custom_headers 键 '{}' 的值不是标量，已跳过", name);
+                continue;
+            }
+        };
+        let Ok(header_value) = HeaderValue::from_str(&value_str) else {
+            warn!("custom_headers 头 '{}' 存在非法值，已跳过", name);
+            continue;
+        };
+        headers.insert(header_name, header_value);
+    }
+    builder.headers(headers)
 }
 
 fn is_hop_by_hop_header(name: &str) -> bool {
@@ -190,6 +233,8 @@ async fn forward_to_provider(
             .header("anthropic-version", "2023-06-01"),
         Protocol::Responses => request.header("Authorization", format!("Bearer {}", cred.api_key)),
     };
+
+    request = apply_custom_headers(request, map.custom_headers.as_deref());
 
     let response = request.send().await;
 
@@ -651,4 +696,62 @@ pub(crate) async fn proxy_chat_completion_inner(
         format!("All providers failed: {}", error_details.join("; "))
     };
     Err(forward_meta.protocol.service_unavailable(&error_summary))
+}
+
+#[cfg(test)]
+mod custom_header_tests {
+    use super::apply_custom_headers;
+    use reqwest::Client;
+    use reqwest::header::AUTHORIZATION;
+
+    fn request_with(raw: Option<&str>) -> reqwest::header::HeaderMap {
+        let client = Client::new();
+        let base = client.get("https://example.com/v1/chat");
+        let req = apply_custom_headers(base, raw);
+        req.try_clone()
+            .unwrap()
+            .build()
+            .expect("build request")
+            .headers()
+            .clone()
+    }
+
+    #[test]
+    fn none_or_empty_keeps_headers_untouched() {
+        assert!(request_with(None).is_empty());
+        assert!(request_with(Some("  ")).is_empty());
+    }
+
+    #[test]
+    fn applies_plain_custom_headers() {
+        let h = request_with(Some(r#"{"X-Tenant":"A","X-Debug":"1"}"#));
+        assert_eq!(h.get("x-tenant").map(|v| v.to_str().unwrap()), Some("A"));
+        assert_eq!(h.get("x-debug").map(|v| v.to_str().unwrap()), Some("1"));
+    }
+
+    #[test]
+    fn overrides_protocol_header() {
+        // 模拟协议默认头已带上 Authorization，再通过自定义头覆盖
+        let client = Client::new();
+        let base = client.get("https://example.com").header(AUTHORIZATION, "Bearer default");
+        let req = apply_custom_headers(base, Some(r#"{"Authorization":"Bearer custom"}"#));
+        let headers = req.build().unwrap().headers().clone();
+        assert_eq!(
+            headers.get(AUTHORIZATION).map(|v| v.to_str().unwrap()),
+            Some("Bearer custom")
+        );
+    }
+
+    #[test]
+    fn invalid_json_ignored() {
+        assert!(request_with(Some("not-json{")).is_empty());
+    }
+
+    #[test]
+    fn invalid_header_name_skipped_others_applied() {
+        // 含换行的非法头名会被 HeaderName 拒绝并跳过，合法的保留
+        let h = request_with(Some(r#"{"ok-name":"v","bad name\n":"x"}"#));
+        assert_eq!(h.get("ok-name").map(|v| v.to_str().unwrap()), Some("v"));
+        assert!(h.get("bad name\n").is_none());
+    }
 }

@@ -29,6 +29,7 @@ pub struct ModelProviderMap {
     pub timeout: u64,
     pub protocols: String,
     pub context_length: i32,
+    pub custom_headers: Option<String>,
     pub credentials: Vec<CredentialInfo>,
 }
 
@@ -215,6 +216,7 @@ fn build_model_info(
             context_length: map_entry
                 .context_length
                 .unwrap_or(model_config_item.context_length),
+            custom_headers: map_entry.custom_headers.clone(),
             credentials,
         });
     }

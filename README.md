@@ -68,12 +68,14 @@ free_models_token/
 - **优先级与故障切换** — 按 `priority` 排序，失败自动降级 + 熔断惩罚机制
 - **进程内内存缓存** — 全部基于 moka，模型调度缓存支持 TTL 配置（`SCHEDULER_CACHE_TTL_SEC`）
 - **Token 计数** — `tiktoken-rs` cl100k_base BPE，请求前估算 prompt token 做上下文窗口校验
-- **用量日志** — 每次请求记录完整用量到 `usage_log` 表（含 cache hit/miss tokens），支持每日自动归档
+- **用量日志** — 每次请求记录完整用量到 `usage_log` 表（含 cache hit/miss tokens），支持每日自动归档（单事务原子执行）
 - **凭证管理** — 一个供应商支持多组凭证（api_key / account / password），AES-256-GCM 加密存储
 - **配额持久化** — 上游配额耗尽自动标记凭证为 `quota_exhausted` 并跳过该凭证，支持在管理端手动重置状态
 - **响应透明化** — 透传上游响应头，不伪造 SSE 结束帧，保持与上游协议一致
 - **Admin 接口** — Ed25519 签名鉴权，按职责拆分为多个子模块的完整 CRUD
+- **管理员钥匙引导** — 设置 `ADMIN_BOOTSTRAP_PUBLIC_KEY` 即可在首次部署时自动注册管理员公钥，无需手动操作数据库
 - **SSRF 防护** — 上游 URL 校验拦截私网 IP，DNS 解析失败时 fail-closed
+- **测试覆盖** — 38 个离线单元/集成测试（加密、Ed25519 签名、SSRF、归档、公钥引导），`cargo test` 一键运行
 
 ## 快速开始
 
@@ -82,6 +84,11 @@ free_models_token/
 ```bash
 cd free_models_server
 cp .env.example .env           # 至少设置 DATABASE_URL 和 ENCRYPTION_KEY
+
+# 可选（首次部署推荐）：生成管理员密钥对并让服务启动时自动注册公钥，
+# 免去首次使用 Admin API 前手动写数据库的步骤：
+#   ssh-keygen -t ed25519 -f admin_key -N ""
+#   echo ADMIN_BOOTSTRAP_PUBLIC_KEY=$(cat admin_key.pub) >> .env
 
 # 数据库：服务启动自动幂等建表，无需手动步骤；
 # 从存量 MySQL 迁移数据（在仓库根目录运行；uv 按 PEP 723 注释自动装依赖，

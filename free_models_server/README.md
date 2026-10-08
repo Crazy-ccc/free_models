@@ -13,6 +13,11 @@
 cp .env.example .env
 # 编辑 .env，至少设置 DATABASE_URL 和 ENCRYPTION_KEY
 
+#    可选（首次部署推荐）：生成管理员密钥对并让服务启动时自动注册公钥，
+#    免去首次使用 Admin API 前手动写数据库的步骤：
+#      ssh-keygen -t ed25519 -f admin_key -N ""
+#      echo ADMIN_BOOTSTRAP_PUBLIC_KEY=$(cat admin_key.pub) >> .env
+
 # 2. 数据库：服务启动自动幂等建表，无需手动步骤；
 
 #    或从存量 MySQL 迁移数据（在仓库根目录 ../ 运行，脚本自动建表并导出 SQLite 文件；
@@ -52,6 +57,8 @@ curl http://localhost:8080/health
 | `CACHE_AFFINITY_TTL_SEC` | `300` | 否 | 模型-供应商亲和性缓存 TTL（秒） |
 | `API_KEY_CACHE_MAX_CAPACITY` | `10000` | 否 | API Key 缓存上限（moka） |
 | `SSRF_CACHE_MAX_CAPACITY` | `10000` | 否 | SSRF 校验结果缓存上限（moka） |
+| `ADMIN_BOOTSTRAP_PUBLIC_KEY` | — | 否 | OpenSSH 格式 Ed25519 公钥；设置后启动时幂等写入 `admin_key` 表，用于首次部署或追加管理员钥匙（非法格式拒绝启动） |
+| `ADMIN_BOOTSTRAP_KEY_NAME` | — | 否 | 引导写入的管理员钥匙备注名（可选） |
 
 ---
 
@@ -124,12 +131,14 @@ free_models_server/
 │   └── 001_sqlite_schema.sql           # SQLite 全量建表（7 张业务表 + usage_log_daily 日汇总表）
 └── src/
     ├── main.rs                          # 入口、路由注册、启动（/health、/v1/*、/admin/*）
+    ├── bootstrap.rs                     # Admin 公钥环境变量引导（启动时幂等写入 admin_key）
     ├── app.rs                           # AppState、HTTP Client 构建（UA: FreeModelsServer/1.0）
     ├── config.rs                        # 环境变量读取与默认值
     ├── response.rs                      # 统一错误响应（OpenAI / Anthropic 格式）
     ├── task.rs                          # 优雅关闭、每日 00:05 UTC 归档定时任务
     ├── db/
-    │   ├── mod.rs                       # StoreError、Database 聚合结构体、init_db / build_database
+    │   ├── mod.rs                       # StoreError、Database 聚合结构体、init_db / build_database、schema 幂等应用
+    │   ├── test_support.rs              # 测试专用内存 SQLite 建库助手（仅测试编译期存在）
     │   ├── types.rs                     # DTO 类型（UsageLogInsert、UsageLogStatItem 等）
     │   ├── entities/                    # 7 个 SeaORM 实体
     │   │   ├── admin_key.rs
@@ -146,7 +155,7 @@ free_models_server/
     │       ├── provider_config.rs
     │       ├── provider_credential.rs   # 含 quota_exhausted 标记/清除
     │       ├── provider_model_map.rs
-    │       └── usage_log.rs             # query_stats 聚合、archive_yesterday 归档
+        └── usage_log.rs             # query_stats 聚合、archive_yesterday 归档（单事务原子执行）
     ├── handler/
     │   ├── mod.rs
     │   ├── chat_handler.rs              # /v1/models、/v1/chat/completions、/v1/messages、/v1/responses
@@ -209,6 +218,25 @@ free_models_server/
 
 ---
 
+
+## 测试
+
+```bash
+cargo test
+```
+
+当前共 **38 个单元/集成测试**，全部离线可运行（无外部网络依赖）：
+
+| 模块 | 数量 | 覆盖 |
+|------|------|------|
+| 公钥引导 bootstrap | 7 | 正常写入、幂等重启、停用不复活、追加、非法格式拒绝、空表提示 |
+| Ed25519 鉴权 admin_auth | 10 | 五段签名 payload、OpenSSH wire 解析、本地签名往返与篡改、指纹格式 |
+| AES 加密 encryption | 8 | 往返一致、异钥/篡改拒绝、非法 base64、parse_key |
+| SSRF proxy_ssrf | 8 | 主机提取、私网段判定、字面量 IP 阻断/放行（异步） |
+| 每日归档 usage_log | 2 | 键对齐聚合、重复归档幂等 |
+| schema 拆分 db/mod | 3 | 边界拆分、注释块跳过、CRLF 归一化 |
+
+---
 ## 详细文档
 
 以下文档位于 `../docx/` 目录下，是该项目的**详细技术参考**：

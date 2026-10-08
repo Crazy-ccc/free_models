@@ -15,6 +15,7 @@ pub struct CreateProviderModelMapRequest {
     pub status: Option<String>,
     pub timeout: Option<i32>,
     pub context_length: Option<i32>,
+    pub custom_headers: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -27,6 +28,7 @@ pub struct UpdateProviderModelMapRequest {
     pub status: Option<String>,
     pub timeout: Option<i32>,
     pub context_length: Option<i32>,
+    pub custom_headers: Option<String>,
 }
 
 impl From<CreateProviderModelMapRequest> for crate::db::impls::provider_model_map::ProviderModelMapInput {
@@ -41,6 +43,7 @@ impl From<CreateProviderModelMapRequest> for crate::db::impls::provider_model_ma
             status: req.status.unwrap_or_else(|| "available".to_string()),
             timeout: req.timeout,
             context_length: req.context_length,
+            custom_headers: req.custom_headers,
         }
     }
 }
@@ -55,6 +58,7 @@ impl From<UpdateProviderModelMapRequest> for crate::db::impls::provider_model_ma
             status: req.status,
             timeout: req.timeout,
             context_length: req.context_length,
+            custom_headers: req.custom_headers,
         }
     }
 }
@@ -77,6 +81,7 @@ pub struct ProviderModelMapResponse {
     pub protocols: String,
     pub status: String,
     pub timeout: Option<i32>,
+    pub custom_headers: Option<String>,
     pub created_time: chrono::NaiveDateTime,
     pub last_updated: chrono::NaiveDateTime,
 }
@@ -94,6 +99,7 @@ impl From<crate::db::entities::provider_model_map::Model> for ProviderModelMapRe
             protocols: m.protocols,
             status: m.status,
             timeout: m.timeout,
+            custom_headers: m.custom_headers,
             created_time: m.created_time,
             last_updated: m.last_updated,
         }

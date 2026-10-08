@@ -68,6 +68,7 @@ export interface ProviderModelMap {
   protocols: string;
   status: string;
   timeout: number | null;
+  custom_headers: string | null;
   created_time: string;
   last_updated: string;
 }
